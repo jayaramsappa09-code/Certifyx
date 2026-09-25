@@ -99,6 +99,28 @@ export function formatScanTimestamp(timestamp?: string | null): {
   }
 }
 
+/**
+ * Format timestamp into exact human-readable date and time for status tooltip
+ */
+export function formatExactTimestamp(isoString?: string): string {
+  if (!isoString) return 'No status updates recorded yet';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return 'No status updates recorded yet';
+    return date.toLocaleString([], {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return 'No status updates recorded yet';
+  }
+}
+
 export const StudentTable: React.FC<StudentTableProps> = ({
   students,
   lastScannedTimestamp,
@@ -1013,24 +1035,24 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                 {/* Bulk Select All Checkbox Column */}
                 <th className="py-3.5 px-4 w-12 text-center">
-                  <button
-                    type="button"
-                    onClick={handleToggleSelectAllFiltered}
-                    className="inline-flex items-center justify-center w-5 h-5 rounded transition text-purple-400 hover:text-purple-300 cursor-pointer"
-                    title={
-                      isAllFilteredSelected
-                        ? 'Deselect all filtered'
-                        : 'Select all filtered students'
-                    }
-                  >
-                    {isAllFilteredSelected ? (
-                      <CheckSquare className="w-5 h-5 text-purple-400" />
-                    ) : isSomeFilteredSelected ? (
-                      <MinusSquare className="w-5 h-5 text-purple-400" />
-                    ) : (
-                      <Square className="w-5 h-5 text-slate-500 hover:text-slate-300" />
-                    )}
-                  </button>
+                  <div className="inline-flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllFilteredSelected}
+                      ref={(el) => {
+                        if (el) {
+                          el.indeterminate = isSomeFilteredSelected && !isAllFilteredSelected;
+                        }
+                      }}
+                      onChange={handleToggleSelectAllFiltered}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-900 focus:ring-2 cursor-pointer transition accent-purple-500"
+                      title={
+                        isAllFilteredSelected
+                          ? 'Deselect all filtered'
+                          : 'Select all filtered students'
+                      }
+                    />
+                  </div>
                 </th>
 
                 {/* Sortable Roll No */}
@@ -1189,25 +1211,40 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                         } ${isExpanded ? 'bg-slate-900/80 border-b border-purple-800/40' : ''}`}
                       >
                         {/* Selection Checkbox with status color left-border indicator */}
-                        <td className={`py-3.5 px-4 text-center border-l-4 transition-colors duration-150 ${
-                          student.overallStatus === 'COMPLETED'
-                            ? 'border-l-emerald-500/90'
-                            : student.overallStatus === 'PENDING'
-                            ? 'border-l-amber-500/90'
-                            : 'border-l-red-500/90'
-                        }`}>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleSelectStudent(student.rollNo)}
-                            className="inline-flex items-center justify-center w-5 h-5 rounded transition text-purple-400 hover:text-purple-300 cursor-pointer"
-                            title={`Select ${student.rollNo}`}
-                          >
-                            {isSelected ? (
-                              <CheckSquare className="w-5 h-5 text-purple-400" />
-                            ) : (
-                              <Square className="w-5 h-5 text-slate-600 group-hover:text-slate-400" />
-                            )}
-                          </button>
+                        <td 
+                          className={`py-3.5 px-4 text-center border-l-4 transition-colors duration-150 relative group/border ${
+                            student.overallStatus === 'COMPLETED'
+                              ? 'border-l-emerald-500/90'
+                              : student.overallStatus === 'PENDING'
+                              ? 'border-l-amber-500/90'
+                              : 'border-l-red-500/90'
+                          }`}
+                          title={`Last status update: ${formatExactTimestamp(student.lastUpdated)}`}
+                        >
+                          {/* Exact Timestamp Status Tooltip on Border Hover */}
+                          <div className="absolute left-1.5 top-1/2 -translate-y-1/2 ml-2 pointer-events-none opacity-0 group-hover/border:opacity-100 transition-opacity duration-150 bg-slate-950/95 border border-slate-800 text-slate-200 text-[10px] font-semibold rounded-lg py-1.5 px-3 z-40 shadow-xl whitespace-nowrap border-blue-500/30 flex flex-col items-start gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`w-2 h-2 rounded-full ${
+                                student.overallStatus === 'COMPLETED'
+                                  ? 'bg-emerald-400 animate-pulse'
+                                  : student.overallStatus === 'PENDING'
+                                  ? 'bg-amber-400 animate-pulse'
+                                  : 'bg-red-400'
+                              }`} />
+                              <span className="text-slate-400 uppercase tracking-wider font-bold text-[9px]">Last Status Update:</span>
+                            </div>
+                            <span className="font-mono text-slate-300">{formatExactTimestamp(student.lastUpdated)}</span>
+                          </div>
+
+                          <div className="inline-flex items-center justify-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectStudent(student.rollNo)}
+                              className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-900 focus:ring-2 cursor-pointer transition accent-purple-500"
+                              title={`Select ${student.rollNo}`}
+                            />
+                          </div>
                         </td>
 
                         {/* Roll No */}
@@ -1571,22 +1608,20 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     ? 'border-l-amber-500'
                     : 'border-l-red-500'
                 }`}
+                title={`Last status update: ${formatExactTimestamp(student.lastUpdated)}`}
               >
                 {/* Header: Select Checkbox + Roll No + Status Badge */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleSelectStudent(student.rollNo)}
-                      className="mt-0.5 text-purple-400 hover:text-purple-300 transition cursor-pointer"
-                      title="Select for bulk action"
-                    >
-                      {isSelected ? (
-                        <CheckSquare className="w-5 h-5 text-purple-400" />
-                      ) : (
-                        <Square className="w-5 h-5 text-slate-600" />
-                      )}
-                    </button>
+                    <div className="inline-flex items-center justify-center mt-1">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelectStudent(student.rollNo)}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-900 focus:ring-2 cursor-pointer transition accent-purple-500"
+                        title="Select for bulk action"
+                      />
+                    </div>
                     <div>
                       <span className="font-mono text-xs font-bold text-blue-400 tracking-wide px-2 py-0.5 rounded bg-blue-950/70 border border-blue-900">
                         {student.rollNo}
