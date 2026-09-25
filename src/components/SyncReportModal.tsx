@@ -15,20 +15,36 @@ import {
 import { SyncReport } from '../types';
 
 interface SyncReportModalProps {
+  isOpen?: boolean;
   report: SyncReport | null;
   onClose: () => void;
   onExportReport?: () => void;
 }
 
 export const SyncReportModal: React.FC<SyncReportModalProps> = ({
+  isOpen = true,
   report,
   onClose,
   onExportReport,
 }) => {
-  if (!report) return null;
+  // Close on Escape key
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  if (!isOpen || !report) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
+    >
       <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between">

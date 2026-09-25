@@ -156,9 +156,10 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
         const isActive = activeFilter === c.id;
         return (
           <button
+            type="button"
             key={c.id}
             onClick={() => onSelectFilter(c.id)}
-            className={`p-3.5 rounded-xl border text-left transition relative cursor-pointer group flex flex-col justify-between ${
+            className={`p-3.5 rounded-xl border text-left transition relative cursor-pointer group flex flex-col justify-between touch-manipulation ${
               c.bg
             } ${isActive ? c.activeBorder : c.border} hover:border-slate-600`}
           >

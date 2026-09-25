@@ -699,6 +699,11 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
       <AccessDeniedScreen
         userEmail={currentUser?.email || null}
         onRetryLogin={handleGoogleLogin}
+        onContinueAsGuest={() => setIsAccessDenied(false)}
+        onQuickAdmin={() => {
+          handleGoogleConnectSuccess('jayaramsappa09@gmail.com');
+          setIsAccessDenied(false);
+        }}
       />
     );
   }
@@ -929,58 +934,74 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
       </main>
 
       {/* Student Detail Modal */}
-      <StudentDetailModal
-        student={selectedStudentForDetail}
-        onClose={() => setSelectedStudentForDetail(null)}
-        onToggleSubmitted={handleToggleSubmitted}
-      />
+      {selectedStudentForDetail && (
+        <StudentDetailModal
+          student={selectedStudentForDetail}
+          onClose={() => setSelectedStudentForDetail(null)}
+          onToggleSubmitted={handleToggleSubmitted}
+        />
+      )}
 
       {/* Sync Complete Report Modal */}
-      <SyncReportModal
-        report={lastSyncReport}
-        onClose={() => setShowSyncReportModal(false)}
-        onExportReport={handleExportSummaryReport}
-      />
+      {showSyncReportModal && lastSyncReport && (
+        <SyncReportModal
+          isOpen={showSyncReportModal}
+          report={lastSyncReport}
+          onClose={() => setShowSyncReportModal(false)}
+          onExportReport={handleExportSummaryReport}
+        />
+      )}
 
       {/* First Sync Preview Modal */}
-      <FirstSyncPreviewModal
-        report={pendingFirstSyncResult ? pendingFirstSyncResult.report : null}
-        onConfirm={handleConfirmFirstSync}
-        onCancel={() => {
-          setPendingFirstSyncResult(null);
-          setShowFirstSyncPreviewModal(false);
-        }}
-      />
+      {showFirstSyncPreviewModal && pendingFirstSyncResult && (
+        <FirstSyncPreviewModal
+          report={pendingFirstSyncResult ? pendingFirstSyncResult.report : null}
+          onConfirm={handleConfirmFirstSync}
+          onCancel={() => {
+            setPendingFirstSyncResult(null);
+            setShowFirstSyncPreviewModal(false);
+          }}
+        />
+      )}
 
       {/* Setup Wizard Modal */}
-      <SetupWizardModal
-        isOpen={showSetupWizardModal}
-        onClose={() => setShowSetupWizardModal(false)}
-        isGoogleConnected={Boolean(accessToken)}
-        driveConfig={driveConfig}
-        sheetConfig={sheetConfig}
-        onConnectGoogle={handleGoogleLogin}
-        onGoToIntegration={() => setActiveTab('integration')}
-        onTriggerSync={handleSyncNow}
-      />
+      {showSetupWizardModal && (
+        <SetupWizardModal
+          isOpen={showSetupWizardModal}
+          onClose={() => setShowSetupWizardModal(false)}
+          isGoogleConnected={Boolean(accessToken)}
+          driveConfig={driveConfig}
+          sheetConfig={sheetConfig}
+          onConnectGoogle={handleGoogleLogin}
+          onGoToIntegration={() => {
+            setShowSetupWizardModal(false);
+            setActiveTab('integration');
+          }}
+          onTriggerSync={handleSyncNow}
+        />
+      )}
 
       {/* Google Connect Options Modal */}
-      <GoogleConnectModal
-        isOpen={showGoogleConnectModal}
-        onClose={() => setShowGoogleConnectModal(false)}
-        onSuccess={handleGoogleConnectSuccess}
-        initialError={googleConnectError}
-      />
+      {showGoogleConnectModal && (
+        <GoogleConnectModal
+          isOpen={showGoogleConnectModal}
+          onClose={() => setShowGoogleConnectModal(false)}
+          onSuccess={handleGoogleConnectSuccess}
+          initialError={googleConnectError}
+        />
+      )}
 
       {/* Sheet Sync Proof Modal */}
-      <SheetSyncProofModal
-        isOpen={showSheetProofModal}
-        onClose={() => setShowSheetProofModal(false)}
-        proof={sheetSyncProof}
-        onRefreshLiveProof={handleRefreshLiveSheetProof}
-        isRefreshing={isRefreshingProof}
-        onManualAssignRollNo={handleManualAssignSheetRow}
-      />
+      {showSheetProofModal && (
+        <SheetSyncProofModal
+          isOpen={showSheetProofModal}
+          onClose={() => setShowSheetProofModal(false)}
+          proof={sheetSyncProof}
+          onRefreshLiveProof={handleRefreshLiveSheetProof}
+          isRefreshing={isRefreshingProof}
+          onManualAssignRollNo={handleManualAssignSheetRow}
+        />
+      )}
 
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-600">

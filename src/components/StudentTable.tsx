@@ -253,8 +253,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           </div>
           {activeFilter !== 'ALL' && (
             <button
+              type="button"
               onClick={() => setActiveFilter('ALL')}
-              className="text-blue-400 hover:underline cursor-pointer"
+              className="text-blue-400 hover:underline cursor-pointer touch-manipulation"
             >
               Reset filter
             </button>
@@ -280,8 +281,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               </div>
               <div className="flex items-center gap-2 text-[11px] text-slate-400">
                 <button
+                  type="button"
                   onClick={handleToggleSelectAllFiltered}
-                  className="hover:text-purple-300 underline cursor-pointer"
+                  className="hover:text-purple-300 underline cursor-pointer touch-manipulation"
                 >
                   {isAllFilteredSelected ? 'Deselect filtered' : `Select all ${filteredStudents.length} filtered`}
                 </button>
@@ -289,8 +291,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   <>
                     <span>•</span>
                     <button
+                      type="button"
                       onClick={handleSelectAll67}
-                      className="hover:text-purple-300 underline cursor-pointer"
+                      className="hover:text-purple-300 underline cursor-pointer touch-manipulation"
                     >
                       Select all 67 class students
                     </button>
@@ -303,8 +306,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           {/* Bulk Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
+              type="button"
               onClick={() => handleBulkSetSubmitted(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-lg shadow-purple-600/30 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-lg shadow-purple-600/30 cursor-pointer touch-manipulation"
               title="Mark all selected students as Submitted (TRUE)"
             >
               <CheckSquare className="w-4 h-4" />
@@ -312,8 +316,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={() => handleBulkSetSubmitted(false)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition cursor-pointer touch-manipulation"
               title="Mark all selected students as Not Submitted (FALSE)"
             >
               <Square className="w-4 h-4 text-slate-400" />
@@ -321,8 +326,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={handleClearSelection}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer touch-manipulation"
               title="Clear selection"
             >
               <X className="w-4 h-4" />
@@ -463,8 +469,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                       {/* Submitted (Interactive Admin Checkbox) */}
                       <td className="py-3.5 px-4 text-center">
                         <button
+                          type="button"
                           onClick={() => onToggleSubmitted(student.rollNo, student.submitted)}
-                          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition cursor-pointer ${
+                          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition cursor-pointer touch-manipulation ${
                             student.submitted
                               ? 'bg-purple-950/80 text-purple-400 border border-purple-800 hover:bg-purple-900/80'
                               : 'bg-slate-950 text-slate-500 border border-slate-800 hover:border-slate-600 hover:text-slate-300'
@@ -513,8 +520,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                             </a>
                           )}
                           <button
+                            type="button"
                             onClick={() => onOpenDetails(student)}
-                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer touch-manipulation"
                             title="View student details"
                           >
                             <Eye className="w-4 h-4" />
@@ -665,8 +673,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                       Submitted
                     </span>
                     <button
+                      type="button"
                       onClick={() => onToggleSubmitted(student.rollNo, student.submitted)}
-                      className={`flex items-center gap-1 font-semibold cursor-pointer ${
+                      className={`flex items-center gap-1 font-semibold cursor-pointer touch-manipulation ${
                         student.submitted ? 'text-purple-400' : 'text-slate-500'
                       }`}
                     >
@@ -697,8 +706,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   )}
 
                   <button
+                    type="button"
                     onClick={() => onOpenDetails(student)}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-lg transition"
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-lg transition cursor-pointer touch-manipulation"
                   >
                     View Details
                   </button>
