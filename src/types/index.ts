@@ -1,3 +1,11 @@
+export interface AuthUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  emailVerified?: boolean;
+}
+
 export interface Student {
   rollNo: string;
   name: string;
@@ -39,6 +47,12 @@ export interface SheetRowRecord {
   certificateType?: string;
   year?: string;
   section?: string;
+  certificateUrl?: string;
+  submissionTimestamp?: string;
+  matchedRollNo?: string;
+  matchedStudentName?: string;
+  matchStatus?: 'MATCHED' | 'OUTSIDE_CLASS' | 'UNMATCHED_ROLL' | 'MANUAL_OVERRIDE';
+  matchReason?: string;
   rawValues: Record<string, string>;
 }
 
@@ -48,6 +62,23 @@ export interface ColumnMapping {
   certTypeCol: string;
   yearCol?: string;
   sectionCol?: string;
+  certUrlCol?: string;
+  timestampCol?: string;
+}
+
+export interface SheetSyncProof {
+  proofId: string;
+  timestamp: string;
+  spreadsheetId: string;
+  spreadsheetName: string;
+  sheetName: string;
+  spreadsheetUrl: string;
+  totalRowsScanned: number;
+  matchedCount: number;
+  outsideClassCount: number;
+  unmatchedCount: number;
+  rows: SheetRowRecord[];
+  columnMappingUsed: ColumnMapping;
 }
 
 export interface StudentStatusRecord {

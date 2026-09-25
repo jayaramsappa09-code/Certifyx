@@ -14,12 +14,14 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
+import { AuthUser } from '../types';
 
 interface HeaderProps {
-  user: User | null;
+  user: AuthUser | User | null;
   activeTab: 'dashboard' | 'review' | 'integration' | 'history' | 'audit' | 'docs';
   setActiveTab: (tab: 'dashboard' | 'review' | 'integration' | 'history' | 'audit' | 'docs') => void;
   onSyncNow: () => void;
+  onOpenSheetProof?: () => void;
   isSyncing: boolean;
   lastSynced: string | null;
   reviewCount: number;
@@ -34,6 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   onSyncNow,
+  onOpenSheetProof,
   isSyncing,
   lastSynced,
   reviewCount,
@@ -91,6 +94,18 @@ export const Header: React.FC<HeaderProps> = ({
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'Syncing...' : 'SYNC NOW'}</span>
           </button>
+
+          {/* Sheet Proof Inspector Button */}
+          {onOpenSheetProof && (
+            <button
+              onClick={onOpenSheetProof}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer"
+              title="Inspect Google Sheet live proof, raw rows & verification evidence"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sheet Proof</span>
+            </button>
+          )}
 
           {/* Google Auth Status / Profile */}
           {user ? (

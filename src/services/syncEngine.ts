@@ -106,6 +106,7 @@ export interface SyncEngineResult {
   outsideClassFiles: DriveCertificateFile[];
   duplicateFiles: DriveCertificateFile[];
   ambiguousCertFiles: DriveCertificateFile[];
+  processedSheetRows: SheetRowRecord[];
 }
 
 /**
@@ -227,19 +228,55 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
   // 2. Process Spreadsheet Rows
   let sheetMatchesCount = 0;
   for (const row of sheetRows) {
-    const rawRoll = row.rollNo;
-    if (!rawRoll) continue;
+    let targetRoll = row.matchedRollNo;
 
-    const normalizedRoll = normalizeRollNumber(rawRoll);
-    if (!isValidClassRollNumber(normalizedRoll)) {
-      outsideClassSheetCount++;
+    if (!targetRoll) {
+      const rawRoll = row.rollNo || '';
+      const extracted = extractRollNumberFromText(rawRoll);
+      const normalized = normalizeRollNumber(rawRoll);
+      if (extracted && isValidClassRollNumber(extracted)) {
+        targetRoll = extracted;
+      } else if (isValidClassRollNumber(normalized)) {
+        targetRoll = normalized;
+      } else if (row.name) {
+        // Match by student name
+        const normName = row.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (normName.length >= 4) {
+          const match = FIXED_CLASS_ROSTER.find(
+            (s) => s.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normName
+          );
+          if (match) targetRoll = match.rollNo;
+        }
+      }
+    }
+
+    if (!targetRoll || !isValidClassRollNumber(targetRoll)) {
+      if (row.rollNo) {
+        row.matchStatus = 'OUTSIDE_CLASS';
+        row.matchReason = `Roll number "${row.rollNo}" does not belong to the 67-student roster.`;
+        outsideClassSheetCount++;
+      } else {
+        row.matchStatus = 'UNMATCHED_ROLL';
+        row.matchReason = 'Missing or unreadable roll number in sheet row.';
+      }
       continue;
     }
 
+    const normRoll = normalizeRollNumber(targetRoll);
+    row.matchedRollNo = normRoll;
+    row.matchStatus = 'MATCHED';
+    const rosterStudent = ROSTER_MAP.get(normRoll);
+    if (rosterStudent) {
+      row.matchedStudentName = rosterStudent.name;
+      if (!row.matchReason) {
+        row.matchReason = `Verified match with 67-student roster (${normRoll} - ${rosterStudent.name})`;
+      }
+    }
+
     sheetMatchesCount++;
-    const currentList = studentSheetRecordsMap.get(normalizedRoll) || [];
+    const currentList = studentSheetRecordsMap.get(normRoll) || [];
     currentList.push(row);
-    studentSheetRecordsMap.set(normalizedRoll, currentList);
+    studentSheetRecordsMap.set(normRoll, currentList);
   }
 
   // 3. Build status record for each of the EXACT 67 class students
@@ -338,5 +375,6 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     outsideClassFiles,
     duplicateFiles,
     ambiguousCertFiles,
+    processedSheetRows: sheetRows,
   };
 }

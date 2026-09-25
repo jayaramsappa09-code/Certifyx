@@ -43,6 +43,8 @@ interface GoogleIntegrationTabProps {
   onUpdateSheetConfig: (config: GoogleSheetConfig | null) => void;
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
   onConnectGoogle: () => void;
+  onOpenConnectOptions?: () => void;
+  onOpenSheetProof?: () => void;
   onDisconnectGoogle: () => void;
   onTriggerSync: () => void;
 }
@@ -57,6 +59,8 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
   onUpdateSheetConfig,
   onUpdateSettings,
   onConnectGoogle,
+  onOpenConnectOptions,
+  onOpenSheetProof,
   onDisconnectGoogle,
   onTriggerSync,
 }) => {
@@ -298,7 +302,7 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {accessToken ? (
               <button
                 onClick={onDisconnectGoogle}
@@ -307,12 +311,22 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
                 Disconnect Account
               </button>
             ) : (
-              <button
-                onClick={onConnectGoogle}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
-              >
-                <span>Connect Google Account</span>
-              </button>
+              <>
+                <button
+                  onClick={onConnectGoogle}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
+                >
+                  <span>Connect Google Account</span>
+                </button>
+                {onOpenConnectOptions && (
+                  <button
+                    onClick={onOpenConnectOptions}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-xl transition cursor-pointer"
+                  >
+                    Connection Options &amp; Manual Token
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -515,7 +529,18 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {onOpenSheetProof && (
+                    <button
+                      onClick={onOpenSheetProof}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-semibold rounded-xl transition cursor-pointer"
+                      title="Inspect raw rows, student matches, and proof evidence"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>View Live Sheet Proof</span>
+                    </button>
+                  )}
+
                   <a
                     href={`https://docs.google.com/spreadsheets/d/${sheetConfig.spreadsheetId}/edit`}
                     target="_blank"
@@ -624,6 +649,48 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
                     className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
                   >
                     <option value="">Select column...</option>
+                    {sheetHeaders.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Certificate URL / Proof Link Column */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300 block">
+                    Certificate Drive Link / URL (Proof)
+                  </label>
+                  <select
+                    value={mappingState.certUrlCol || ''}
+                    onChange={(e) =>
+                      setMappingState((prev) => ({ ...prev, certUrlCol: e.target.value }))
+                    }
+                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
+                  >
+                    <option value="">Auto-detect URL...</option>
+                    {sheetHeaders.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Timestamp Column */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300 block">
+                    Submission Timestamp Column
+                  </label>
+                  <select
+                    value={mappingState.timestampCol || ''}
+                    onChange={(e) =>
+                      setMappingState((prev) => ({ ...prev, timestampCol: e.target.value }))
+                    }
+                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
+                  >
+                    <option value="">Auto-detect Timestamp...</option>
                     {sheetHeaders.map((h) => (
                       <option key={h} value={h}>
                         {h}

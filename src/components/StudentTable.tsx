@@ -10,14 +10,18 @@ import {
   Eye,
   CheckSquare,
   Square,
-  Sparkles,
+  MinusSquare,
   FileSpreadsheet,
+  Check,
+  X,
+  ListChecks,
 } from 'lucide-react';
 import { StudentStatusRecord } from '../types';
 
 interface StudentTableProps {
   students: StudentStatusRecord[];
   onToggleSubmitted: (rollNo: string, current: boolean) => void;
+  onBatchSetSubmitted?: (rollNos: string[], submitted: boolean) => void;
   onOpenDetails: (student: StudentStatusRecord) => void;
   activeFilter: string;
   setActiveFilter: (filter: string) => void;
@@ -28,6 +32,7 @@ interface StudentTableProps {
 export const StudentTable: React.FC<StudentTableProps> = ({
   students,
   onToggleSubmitted,
+  onBatchSetSubmitted,
   onOpenDetails,
   activeFilter,
   setActiveFilter,
@@ -35,6 +40,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onExportSummaryReport,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
 
   // Filtering and Searching
   const filteredStudents = useMemo(() => {
@@ -93,6 +99,66 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
     return result;
   }, [students, searchQuery, activeFilter]);
+
+  // Bulk Selection Helpers
+  const isAllFilteredSelected =
+    filteredStudents.length > 0 &&
+    filteredStudents.every((s) => selectedRollNos.has(s.rollNo));
+
+  const isSomeFilteredSelected =
+    filteredStudents.some((s) => selectedRollNos.has(s.rollNo)) &&
+    !isAllFilteredSelected;
+
+  const handleToggleSelectStudent = (rollNo: string) => {
+    setSelectedRollNos((prev) => {
+      const next = new Set(prev);
+      if (next.has(rollNo)) {
+        next.delete(rollNo);
+      } else {
+        next.add(rollNo);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllFiltered = () => {
+    if (isAllFilteredSelected) {
+      // Deselect all currently filtered students
+      setSelectedRollNos((prev) => {
+        const next = new Set(prev);
+        filteredStudents.forEach((s) => next.delete(s.rollNo));
+        return next;
+      });
+    } else {
+      // Select all currently filtered students
+      setSelectedRollNos((prev) => {
+        const next = new Set(prev);
+        filteredStudents.forEach((s) => next.add(s.rollNo));
+        return next;
+      });
+    }
+  };
+
+  const handleSelectAll67 = () => {
+    const allSet = new Set(students.map((s) => s.rollNo));
+    setSelectedRollNos(allSet);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedRollNos(new Set());
+  };
+
+  // Perform Bulk Action
+  const handleBulkSetSubmitted = (submitted: boolean) => {
+    if (selectedRollNos.size === 0) return;
+    const rollNos = Array.from(selectedRollNos);
+    if (onBatchSetSubmitted) {
+      onBatchSetSubmitted(rollNos, submitted);
+    } else {
+      // Fallback: individually toggle
+      rollNos.forEach((r) => onToggleSubmitted(r, !submitted));
+    }
+  };
 
   const filterOptions = [
     { id: 'ALL', label: 'All (67)' },
@@ -188,7 +254,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           {activeFilter !== 'ALL' && (
             <button
               onClick={() => setActiveFilter('ALL')}
-              className="text-blue-400 hover:underline"
+              className="text-blue-400 hover:underline cursor-pointer"
             >
               Reset filter
             </button>
@@ -196,12 +262,102 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         </div>
       </div>
 
+      {/* Prominent Bulk Action Toolbar (When 1 or more students are selected) */}
+      {selectedRollNos.size > 0 && (
+        <div className="bg-gradient-to-r from-purple-950/80 via-slate-900 to-indigo-950/80 border-2 border-purple-500/40 rounded-2xl p-3.5 shadow-2xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
+              <ListChecks className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-white">
+                  {selectedRollNos.size} Student{selectedRollNos.size > 1 ? 's' : ''} Selected
+                </span>
+                <span className="text-xs text-purple-300 font-mono">
+                  ({Math.round((selectedRollNos.size / 67) * 100)}% of class)
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                <button
+                  onClick={handleToggleSelectAllFiltered}
+                  className="hover:text-purple-300 underline cursor-pointer"
+                >
+                  {isAllFilteredSelected ? 'Deselect filtered' : `Select all ${filteredStudents.length} filtered`}
+                </button>
+                {selectedRollNos.size < 67 && (
+                  <>
+                    <span>•</span>
+                    <button
+                      onClick={handleSelectAll67}
+                      className="hover:text-purple-300 underline cursor-pointer"
+                    >
+                      Select all 67 class students
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Bulk Action Buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => handleBulkSetSubmitted(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-lg shadow-purple-600/30 cursor-pointer"
+              title="Mark all selected students as Submitted (TRUE)"
+            >
+              <CheckSquare className="w-4 h-4" />
+              <span>Mark as Submitted</span>
+            </button>
+
+            <button
+              onClick={() => handleBulkSetSubmitted(false)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition cursor-pointer"
+              title="Mark all selected students as Not Submitted (FALSE)"
+            >
+              <Square className="w-4 h-4 text-slate-400" />
+              <span>Mark as Not Submitted</span>
+            </button>
+
+            <button
+              onClick={handleClearSelection}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer"
+              title="Clear selection"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Desktop Table View */}
       <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                {/* Bulk Select All Checkbox Column */}
+                <th className="py-3.5 px-4 w-12 text-center">
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAllFiltered}
+                    className="inline-flex items-center justify-center w-5 h-5 rounded transition text-purple-400 hover:text-purple-300 cursor-pointer"
+                    title={
+                      isAllFilteredSelected
+                        ? 'Deselect all filtered'
+                        : 'Select all filtered students'
+                    }
+                  >
+                    {isAllFilteredSelected ? (
+                      <CheckSquare className="w-5 h-5 text-purple-400" />
+                    ) : isSomeFilteredSelected ? (
+                      <MinusSquare className="w-5 h-5 text-purple-400" />
+                    ) : (
+                      <Square className="w-5 h-5 text-slate-500 hover:text-slate-300" />
+                    )}
+                  </button>
+                </th>
                 <th className="py-3.5 px-4 w-32">Roll No</th>
                 <th className="py-3.5 px-4">Student Name</th>
                 <th className="py-3.5 px-4">Certificates</th>
@@ -215,7 +371,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             <tbody className="divide-y divide-slate-800/60 text-sm">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                  <td colSpan={9} className="py-12 text-center text-slate-500">
                     No students match the selected filters or search query.
                   </td>
                 </tr>
@@ -223,12 +379,31 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 filteredStudents.map((student) => {
                   const hasDriveFiles = student.driveFiles.length > 0;
                   const firstDriveFile = hasDriveFiles ? student.driveFiles[0] : null;
+                  const isSelected = selectedRollNos.has(student.rollNo);
 
                   return (
                     <tr
                       key={student.rollNo}
-                      className="hover:bg-slate-800/40 transition group"
+                      className={`hover:bg-slate-800/40 transition group ${
+                        isSelected ? 'bg-purple-950/20' : ''
+                      }`}
                     >
+                      {/* Selection Checkbox */}
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSelectStudent(student.rollNo)}
+                          className="inline-flex items-center justify-center w-5 h-5 rounded transition text-purple-400 hover:text-purple-300 cursor-pointer"
+                          title={`Select ${student.rollNo}`}
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-5 h-5 text-purple-400" />
+                          ) : (
+                            <Square className="w-5 h-5 text-slate-600 group-hover:text-slate-400" />
+                          )}
+                        </button>
+                      </td>
+
                       {/* Roll No */}
                       <td className="py-3.5 px-4 font-mono font-semibold text-slate-200 tracking-wide text-xs sm:text-sm">
                         {student.rollNo}
@@ -357,6 +532,28 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
       {/* Mobile Card View (Optimized for Android / Phones) */}
       <div className="grid grid-cols-1 gap-3 md:hidden">
+        {/* Mobile Select-all button bar if multiple items */}
+        {filteredStudents.length > 0 && (
+          <div className="flex items-center justify-between bg-slate-900 border border-slate-800 px-3.5 py-2 rounded-xl text-xs text-slate-300">
+            <button
+              onClick={handleToggleSelectAllFiltered}
+              className="flex items-center gap-2 font-medium text-purple-400 cursor-pointer"
+            >
+              {isAllFilteredSelected ? (
+                <CheckSquare className="w-4 h-4" />
+              ) : (
+                <Square className="w-4 h-4" />
+              )}
+              <span>{isAllFilteredSelected ? 'Deselect all' : `Select all (${filteredStudents.length})`}</span>
+            </button>
+            {selectedRollNos.size > 0 && (
+              <span className="text-slate-400 font-mono text-[11px]">
+                {selectedRollNos.size} selected
+              </span>
+            )}
+          </div>
+        )}
+
         {filteredStudents.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-500">
             No students found.
@@ -365,21 +562,38 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           filteredStudents.map((student) => {
             const hasDriveFiles = student.driveFiles.length > 0;
             const firstDriveFile = hasDriveFiles ? student.driveFiles[0] : null;
+            const isSelected = selectedRollNos.has(student.rollNo);
 
             return (
               <div
                 key={student.rollNo}
-                className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-md"
+                className={`bg-slate-900 border rounded-2xl p-4 space-y-3 shadow-md transition ${
+                  isSelected ? 'border-purple-500/50 bg-purple-950/20' : 'border-slate-800'
+                }`}
               >
-                {/* Header: Roll No + Status Badge */}
+                {/* Header: Select Checkbox + Roll No + Status Badge */}
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="font-mono text-xs font-bold text-blue-400 tracking-wide px-2 py-0.5 rounded bg-blue-950/70 border border-blue-900">
-                      {student.rollNo}
-                    </span>
-                    <h3 className="text-sm font-semibold text-white mt-1">
-                      {student.name}
-                    </h3>
+                  <div className="flex items-start gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSelectStudent(student.rollNo)}
+                      className="mt-0.5 text-purple-400 hover:text-purple-300 transition cursor-pointer"
+                      title="Select for bulk action"
+                    >
+                      {isSelected ? (
+                        <CheckSquare className="w-5 h-5 text-purple-400" />
+                      ) : (
+                        <Square className="w-5 h-5 text-slate-600" />
+                      )}
+                    </button>
+                    <div>
+                      <span className="font-mono text-xs font-bold text-blue-400 tracking-wide px-2 py-0.5 rounded bg-blue-950/70 border border-blue-900">
+                        {student.rollNo}
+                      </span>
+                      <h3 className="text-sm font-semibold text-white mt-1">
+                        {student.name}
+                      </h3>
+                    </div>
                   </div>
 
                   {student.overallStatus === 'COMPLETED' ? (

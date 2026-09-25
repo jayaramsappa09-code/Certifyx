@@ -4,6 +4,9 @@ import {
   GoogleSheetConfig,
   AppSettings,
   SyncReport,
+  SheetSyncProof,
+  DriveCertificateFile,
+  SheetRowRecord,
 } from '../types';
 import { DEFAULT_ADMIN_EMAILS } from './firebaseAuth';
 
@@ -16,6 +19,8 @@ const STORAGE_KEYS = {
   AUDIT_LOGS: 'ccam_audit_logs',
   MANUAL_OVERRIDES: 'ccam_manual_file_overrides',
   DUPLICATE_RESOLUTIONS: 'ccam_duplicate_resolutions',
+  LAST_SYNCED_DATA: 'ccam_last_synced_data',
+  SHEET_PROOF: 'ccam_last_sheet_sync_proof',
 };
 
 // 1. Submitted status (Map: normalized rollNo -> boolean)
@@ -226,5 +231,47 @@ export function saveDuplicateResolution(fileId: string, resolution: 'KEEP' | 'IG
     localStorage.setItem(STORAGE_KEYS.DUPLICATE_RESOLUTIONS, JSON.stringify(resolutions));
   } catch (e) {
     console.error('Failed to save duplicate resolution:', e);
+  }
+}
+
+// 9. Synced Data Cache (Ensures additions in sheets or drive persist across reloads)
+export interface SyncedDataCache {
+  driveFiles: DriveCertificateFile[];
+  sheetRows: SheetRowRecord[];
+  timestamp: string;
+}
+
+export function getCachedSyncedData(): SyncedDataCache | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.LAST_SYNCED_DATA);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCachedSyncedData(data: SyncedDataCache): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.LAST_SYNCED_DATA, JSON.stringify(data));
+  } catch (e) {
+    console.error('Failed to save cached synced data:', e);
+  }
+}
+
+// 10. Sheet Sync Proof Records
+export function getLastSheetSyncProof(): SheetSyncProof | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SHEET_PROOF);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSheetSyncProof(proof: SheetSyncProof): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.SHEET_PROOF, JSON.stringify(proof));
+  } catch (e) {
+    console.error('Failed to save sheet sync proof:', e);
   }
 }

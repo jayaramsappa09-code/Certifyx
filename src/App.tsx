@@ -19,6 +19,11 @@ import {
   getAuditLogs,
   addAuditLog,
   saveSubmittedStatus,
+  setBatchSubmittedStatus,
+  getCachedSyncedData,
+  saveCachedSyncedData,
+  getLastSheetSyncProof,
+  saveSheetSyncProof,
 } from './services/storageService';
 import { listCertificateFilesInFolder } from './services/googleDriveService';
 import { readSpreadsheetValues } from './services/googleSheetsService';
@@ -32,6 +37,9 @@ import {
   SyncReport,
   DriveCertificateFile,
   AuditLogEntry,
+  AuthUser,
+  SheetSyncProof,
+  SheetRowRecord,
 } from './types';
 
 // Components
@@ -48,14 +56,18 @@ import { SyncReportModal } from './components/SyncReportModal';
 import { FirstSyncPreviewModal } from './components/FirstSyncPreviewModal';
 import { SetupWizardModal } from './components/SetupWizardModal';
 import { AccessDeniedScreen } from './components/AccessDeniedScreen';
-import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { GoogleConnectModal } from './components/GoogleConnectModal';
+import { SheetSyncProofModal } from './components/SheetSyncProofModal';
+import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
   // Authentication state
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAccessDenied, setIsAccessDenied] = useState(false);
+  const [showGoogleConnectModal, setShowGoogleConnectModal] = useState(false);
+  const [googleConnectError, setGoogleConnectError] = useState<string | null>(null);
 
   // App settings & persistence
   const [settings, setSettings] = useState<AppSettings>(getAppSettings());
@@ -84,6 +96,9 @@ export default function App() {
   const [showFirstSyncPreviewModal, setShowFirstSyncPreviewModal] = useState(false);
   const [pendingFirstSyncResult, setPendingFirstSyncResult] = useState<SyncEngineResult | null>(null);
   const [showSetupWizardModal, setShowSetupWizardModal] = useState(false);
+  const [showSheetProofModal, setShowSheetProofModal] = useState(false);
+  const [sheetSyncProof, setSheetSyncProof] = useState<SheetSyncProof | null>(getLastSheetSyncProof());
+  const [isRefreshingProof, setIsRefreshingProof] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [globalBanner, setGlobalBanner] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -123,19 +138,34 @@ export default function App() {
     return () => unsubscribe();
   }, [settings.adminEmails]);
 
-  // Initial load of students (using seed/reference if no sync yet)
+  // Initial load of students (restore previous live sync data if available, otherwise seed reference)
   useEffect(() => {
-    const initialRun = runSyncEngine({
-      driveFiles: [],
-      sheetRows: [],
-      userEmail: currentUser?.email || 'admin',
-      useSeedDataIfEmpty: true,
-    });
-    setStudentStatuses(initialRun.studentStatuses);
-    setUnidentifiedFiles(initialRun.unidentifiedFiles);
-    setOutsideClassFiles(initialRun.outsideClassFiles);
-    setDuplicateFiles(initialRun.duplicateFiles);
-    setAmbiguousCertFiles(initialRun.ambiguousCertFiles);
+    const cached = getCachedSyncedData();
+    if (cached && (cached.driveFiles?.length > 0 || cached.sheetRows?.length > 0)) {
+      const run = runSyncEngine({
+        driveFiles: cached.driveFiles,
+        sheetRows: cached.sheetRows,
+        userEmail: currentUser?.email || 'admin',
+        useSeedDataIfEmpty: false,
+      });
+      setStudentStatuses(run.studentStatuses);
+      setUnidentifiedFiles(run.unidentifiedFiles);
+      setOutsideClassFiles(run.outsideClassFiles);
+      setDuplicateFiles(run.duplicateFiles);
+      setAmbiguousCertFiles(run.ambiguousCertFiles);
+    } else {
+      const initialRun = runSyncEngine({
+        driveFiles: [],
+        sheetRows: [],
+        userEmail: currentUser?.email || 'admin',
+        useSeedDataIfEmpty: true,
+      });
+      setStudentStatuses(initialRun.studentStatuses);
+      setUnidentifiedFiles(initialRun.unidentifiedFiles);
+      setOutsideClassFiles(initialRun.outsideClassFiles);
+      setDuplicateFiles(initialRun.duplicateFiles);
+      setAmbiguousCertFiles(initialRun.ambiguousCertFiles);
+    }
   }, []);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -144,7 +174,12 @@ export default function App() {
   };
 
   // Google Login Handler
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = async (forceOptions: boolean | React.MouseEvent = false) => {
+    if (forceOptions === true) {
+      setGoogleConnectError(null);
+      setShowGoogleConnectModal(true);
+      return;
+    }
     try {
       setAuthLoading(true);
       const res = await googleSignIn();
@@ -160,12 +195,21 @@ export default function App() {
       setAccessToken(res.accessToken);
       addAuditLog('Admin signed in', res.user.email || '', 'Successful Google OAuth sign in', 'AUTH');
       showToast(`Welcome, ${res.user.displayName || res.user.email}!`, 'success');
+      setShowGoogleConnectModal(false);
     } catch (e: any) {
       console.error('Google sign-in error:', e);
-      showToast(e.message || 'Google sign-in failed.', 'error');
+      setGoogleConnectError(e.message || 'Google sign-in could not be completed.');
+      setShowGoogleConnectModal(true);
+      showToast(e.message || 'Google sign-in popup failed. Choose an option below.', 'error');
     } finally {
       setAuthLoading(false);
     }
+  };
+
+  const handleGoogleConnectSuccess = (email: string) => {
+    addAuditLog('Admin connected', email, 'Connected Google Account', 'AUTH');
+    showToast(`Google account connected as ${email}!`, 'success');
+    setShowGoogleConnectModal(false);
   };
 
   // Google Logout Handler
@@ -203,7 +247,7 @@ export default function App() {
       addAuditLog('Sync started', currentUser?.email || 'admin', 'Triggered synchronization engine', 'SYNC');
 
       let fetchedDriveFiles: DriveCertificateFile[] = [];
-      let fetchedSheetRows: any[] = [];
+      let fetchedSheetRows: SheetRowRecord[] = [];
       const errorMessages: string[] = [];
 
       // 1. Read Google Drive
@@ -235,6 +279,26 @@ export default function App() {
           );
           fetchedSheetRows = sheetResult.rows;
 
+          // Build Live Sheet Sync Proof
+          const proof: SheetSyncProof = {
+            proofId: `PROOF-${Date.now().toString(36).toUpperCase()}`,
+            timestamp: new Date().toISOString(),
+            spreadsheetId: sheetConfig.spreadsheetId,
+            spreadsheetName: sheetConfig.spreadsheetName,
+            sheetName: sheetConfig.sheetName,
+            spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${sheetConfig.spreadsheetId}/edit`,
+            totalRowsScanned: fetchedSheetRows.length,
+            matchedCount: fetchedSheetRows.filter((r) => r.matchStatus === 'MATCHED').length,
+            outsideClassCount: fetchedSheetRows.filter((r) => r.matchStatus === 'OUTSIDE_CLASS').length,
+            unmatchedCount: fetchedSheetRows.filter(
+              (r) => r.matchStatus !== 'MATCHED' && r.matchStatus !== 'OUTSIDE_CLASS'
+            ).length,
+            rows: fetchedSheetRows,
+            columnMappingUsed: sheetConfig.columnMapping || sheetResult.detectedMapping,
+          };
+          setSheetSyncProof(proof);
+          saveSheetSyncProof(proof);
+
           // Update sheetConfig lastSynced
           const updatedSheet = {
             ...sheetConfig,
@@ -261,24 +325,141 @@ export default function App() {
         syncResult.report.errorMessages = errorMessages;
       }
 
-      // Check if this is the first live sync with no previous history
-      const prevHistory = getSyncHistory();
-      if (prevHistory.length === 0 && !lastSyncReport) {
-        // Show First Sync Preview Modal (Section 42)
-        setPendingFirstSyncResult(syncResult);
-        setShowFirstSyncPreviewModal(true);
-      } else {
-        // Direct apply
-        applySyncResult(syncResult);
-        setShowSyncReportModal(true);
-      }
+      // Save persistent cache of synced files & rows so refreshing page keeps them
+      saveCachedSyncedData({
+        driveFiles: fetchedDriveFiles,
+        sheetRows: fetchedSheetRows,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Directly apply sync result to keep dashboard and student statuses in sync
+      applySyncResult(syncResult);
+      setShowSyncReportModal(true);
     } catch (e: any) {
       console.error('Sync failed:', e);
       showToast(e.message || 'Synchronization failed.', 'error');
     } finally {
       setIsSyncing(false);
     }
-  }, [isSyncing, accessToken, driveConfig, sheetConfig, currentUser, lastSyncReport]);
+  }, [isSyncing, accessToken, driveConfig, sheetConfig, currentUser]);
+
+  // Fast 1-click re-fetch for Google Sheet to inspect proof of new rows immediately
+  const handleRefreshLiveSheetProof = async () => {
+    const currentToken = accessToken || getAccessToken();
+    if (!currentToken) {
+      showToast('Please connect your Google Account first.', 'info');
+      setShowGoogleConnectModal(true);
+      return;
+    }
+    if (!sheetConfig?.spreadsheetId || !sheetConfig.sheetName) {
+      showToast('Select a Google Sheet under Google Integration settings first.', 'info');
+      setActiveTab('integration');
+      return;
+    }
+
+    try {
+      setIsRefreshingProof(true);
+      const sheetResult = await readSpreadsheetValues(
+        sheetConfig.spreadsheetId,
+        sheetConfig.sheetName,
+        currentToken,
+        sheetConfig.columnMapping
+      );
+
+      const proof: SheetSyncProof = {
+        proofId: `PROOF-${Date.now().toString(36).toUpperCase()}`,
+        timestamp: new Date().toISOString(),
+        spreadsheetId: sheetConfig.spreadsheetId,
+        spreadsheetName: sheetConfig.spreadsheetName,
+        sheetName: sheetConfig.sheetName,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${sheetConfig.spreadsheetId}/edit`,
+        totalRowsScanned: sheetResult.rows.length,
+        matchedCount: sheetResult.rows.filter((r) => r.matchStatus === 'MATCHED').length,
+        outsideClassCount: sheetResult.rows.filter((r) => r.matchStatus === 'OUTSIDE_CLASS').length,
+        unmatchedCount: sheetResult.rows.filter(
+          (r) => r.matchStatus !== 'MATCHED' && r.matchStatus !== 'OUTSIDE_CLASS'
+        ).length,
+        rows: sheetResult.rows,
+        columnMappingUsed: sheetConfig.columnMapping || sheetResult.detectedMapping,
+      };
+
+      setSheetSyncProof(proof);
+      saveSheetSyncProof(proof);
+
+      // Re-run sync engine with existing cached drive files
+      const cached = getCachedSyncedData();
+      const driveFiles = cached?.driveFiles || [];
+      const syncResult = runSyncEngine({
+        driveFiles,
+        sheetRows: sheetResult.rows,
+        userEmail: currentUser?.email || 'admin',
+        useSeedDataIfEmpty: false,
+      });
+
+      saveCachedSyncedData({
+        driveFiles,
+        sheetRows: sheetResult.rows,
+        timestamp: new Date().toISOString(),
+      });
+
+      applySyncResult(syncResult);
+      showToast(`Sheet proof refreshed! ${proof.matchedCount} verified class student submissions.`, 'success');
+    } catch (e: any) {
+      console.error('Refresh proof error:', e);
+      showToast(e.message || 'Failed to refresh sheet proof.', 'error');
+    } finally {
+      setIsRefreshingProof(false);
+    }
+  };
+
+  // Manual roll number assignment for unmatched sheet rows
+  const handleManualAssignSheetRow = (rowIndex: number, assignedRollNo: string) => {
+    if (!sheetSyncProof) return;
+    const student = FIXED_CLASS_ROSTER.find((s) => s.rollNo === assignedRollNo);
+    const updatedRows = sheetSyncProof.rows.map((r) => {
+      if (r.rowIndex === rowIndex) {
+        return {
+          ...r,
+          matchedRollNo: assignedRollNo,
+          matchedStudentName: student?.name,
+          matchStatus: 'MATCHED' as const,
+          matchReason: `Manually verified and assigned to ${assignedRollNo} (${student?.name})`,
+        };
+      }
+      return r;
+    });
+
+    const updatedProof: SheetSyncProof = {
+      ...sheetSyncProof,
+      rows: updatedRows,
+      matchedCount: updatedRows.filter((r) => r.matchStatus === 'MATCHED').length,
+      outsideClassCount: updatedRows.filter((r) => r.matchStatus === 'OUTSIDE_CLASS').length,
+      unmatchedCount: updatedRows.filter(
+        (r) => r.matchStatus !== 'MATCHED' && r.matchStatus !== 'OUTSIDE_CLASS'
+      ).length,
+    };
+
+    setSheetSyncProof(updatedProof);
+    saveSheetSyncProof(updatedProof);
+
+    const cached = getCachedSyncedData();
+    const driveFiles = cached?.driveFiles || [];
+    const syncResult = runSyncEngine({
+      driveFiles,
+      sheetRows: updatedRows,
+      userEmail: currentUser?.email || 'admin',
+      useSeedDataIfEmpty: false,
+    });
+
+    saveCachedSyncedData({
+      driveFiles,
+      sheetRows: updatedRows,
+      timestamp: new Date().toISOString(),
+    });
+
+    applySyncResult(syncResult);
+    showToast(`Row #${rowIndex} assigned to student ${assignedRollNo}!`, 'success');
+  };
 
   const applySyncResult = (result: SyncEngineResult) => {
     setStudentStatuses(result.studentStatuses);
@@ -289,7 +470,6 @@ export default function App() {
     setLastSyncReport(result.report);
     setSyncHistory(getSyncHistory());
     setAuditLogs(getAuditLogs());
-    showToast('Synchronization complete! Class dashboard updated.', 'success');
   };
 
   const handleConfirmFirstSync = () => {
@@ -344,6 +524,64 @@ export default function App() {
       currentUser?.email || 'admin',
       `Marked ${rollNo} as ${nextVal ? 'SUBMITTED' : 'NOT SUBMITTED'}`,
       'STATUS'
+    );
+  };
+
+  // Batch Toggle Submitted Status for Multiple Selected Students
+  const handleBatchSetSubmitted = (rollNos: string[], submitted: boolean) => {
+    if (rollNos.length === 0) return;
+
+    const updates: Record<string, boolean> = {};
+    const rollSet = new Set(rollNos.map((r) => r.toUpperCase().trim()));
+    rollNos.forEach((r) => {
+      updates[r] = submitted;
+    });
+    setBatchSubmittedStatus(updates);
+
+    setStudentStatuses((prev) =>
+      prev.map((s) => {
+        if (rollSet.has(s.rollNo.toUpperCase().trim())) {
+          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
+          if (s.driveUploaded && s.sheetUpdated && submitted) {
+            nextOverall = 'COMPLETED';
+          } else if (!s.driveUploaded && !s.sheetUpdated && !submitted) {
+            nextOverall = 'NOT STARTED';
+          }
+          return {
+            ...s,
+            submitted,
+            overallStatus: nextOverall,
+          };
+        }
+        return s;
+      })
+    );
+
+    // Update detail modal if open
+    if (selectedStudentForDetail && rollSet.has(selectedStudentForDetail.rollNo.toUpperCase().trim())) {
+      let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
+      if (selectedStudentForDetail.driveUploaded && selectedStudentForDetail.sheetUpdated && submitted) {
+        nextOverall = 'COMPLETED';
+      } else if (!selectedStudentForDetail.driveUploaded && !selectedStudentForDetail.sheetUpdated && !submitted) {
+        nextOverall = 'NOT STARTED';
+      }
+      setSelectedStudentForDetail({
+        ...selectedStudentForDetail,
+        submitted,
+        overallStatus: nextOverall,
+      });
+    }
+
+    addAuditLog(
+      'Bulk submitted status changed',
+      currentUser?.email || 'admin',
+      `Marked ${rollNos.length} student(s) as ${submitted ? 'SUBMITTED' : 'NOT SUBMITTED'}`,
+      'STATUS'
+    );
+
+    showToast(
+      `Marked ${rollNos.length} student(s) as ${submitted ? 'Submitted' : 'Not Submitted'}.`,
+      'success'
     );
   };
 
@@ -502,6 +740,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onSyncNow={handleSyncNow}
+        onOpenSheetProof={() => setShowSheetProofModal(true)}
         isSyncing={isSyncing}
         lastSynced={lastSyncReport?.timestamp || null}
         reviewCount={totalReviewItems}
@@ -548,6 +787,55 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         {/* Tab 1: Dashboard & Class Roster */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            {/* Sheet Sync Proof Quick Banner */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-bold text-white">Google Sheet Live Proof &amp; Inspector</h4>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      {sheetSyncProof ? `${sheetSyncProof.rows.length} rows scanned` : 'No sheet proof yet'}
+                    </span>
+                    {sheetSyncProof && (
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        ({sheetSyncProof.matchedCount} class matches)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {sheetSyncProof
+                      ? `Last audited at ${new Date(sheetSyncProof.timestamp).toLocaleTimeString()} • Click to view row-by-row proof, match evidence, and certificate links.`
+                      : 'Connect your Google Sheet under Google Integration and click "Sync Now" to inspect row evidence.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setShowSheetProofModal(true)}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>View Sheet Proof</span>
+                </button>
+
+                {sheetConfig && (
+                  <button
+                    onClick={handleRefreshLiveSheetProof}
+                    disabled={isRefreshingProof}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 text-slate-300 hover:text-white text-xs font-medium rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                    title="Quickly re-read Google Sheet to fetch newly added rows"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingProof ? 'animate-spin text-blue-400' : ''}`} />
+                    <span>{isRefreshingProof ? 'Refreshing...' : 'Quick Sheet Sync'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Top Metric Cards */}
             <DashboardStats
               totalStudents={67}
@@ -567,6 +855,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
             <StudentTable
               students={studentStatuses}
               onToggleSubmitted={handleToggleSubmitted}
+              onBatchSetSubmitted={handleBatchSetSubmitted}
               onOpenDetails={(s) => setSelectedStudentForDetail(s)}
               activeFilter={activeFilter}
               setActiveFilter={setActiveFilter}
@@ -609,6 +898,8 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               setSettings(updated);
             }}
             onConnectGoogle={handleGoogleLogin}
+            onOpenConnectOptions={() => handleGoogleLogin(true)}
+            onOpenSheetProof={() => setShowSheetProofModal(true)}
             onDisconnectGoogle={handleGoogleLogout}
             onTriggerSync={handleSyncNow}
           />
@@ -671,6 +962,24 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         onConnectGoogle={handleGoogleLogin}
         onGoToIntegration={() => setActiveTab('integration')}
         onTriggerSync={handleSyncNow}
+      />
+
+      {/* Google Connect Options Modal */}
+      <GoogleConnectModal
+        isOpen={showGoogleConnectModal}
+        onClose={() => setShowGoogleConnectModal(false)}
+        onSuccess={handleGoogleConnectSuccess}
+        initialError={googleConnectError}
+      />
+
+      {/* Sheet Sync Proof Modal */}
+      <SheetSyncProofModal
+        isOpen={showSheetProofModal}
+        onClose={() => setShowSheetProofModal(false)}
+        proof={sheetSyncProof}
+        onRefreshLiveProof={handleRefreshLiveSheetProof}
+        isRefreshing={isRefreshingProof}
+        onManualAssignRollNo={handleManualAssignSheetRow}
       />
 
       {/* Footer */}
