@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { AuthUser } from '../types';
+import { ConnectivityStatusIndicator } from './ConnectivityStatusIndicator';
 
 interface HeaderProps {
   user: AuthUser | User | null;
@@ -29,6 +30,11 @@ interface HeaderProps {
   onLogin: () => void;
   onLogout: () => void;
   isGoogleConnected: boolean;
+  isOnline?: boolean;
+  pendingUpdatesCount?: number;
+  isSyncingPending?: boolean;
+  onOpenPendingModal?: () => void;
+  onQuickSyncPending?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -44,6 +50,11 @@ export const Header: React.FC<HeaderProps> = ({
   onLogin,
   onLogout,
   isGoogleConnected,
+  isOnline = true,
+  pendingUpdatesCount = 0,
+  isSyncingPending = false,
+  onOpenPendingModal,
+  onQuickSyncPending,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white">
@@ -71,6 +82,15 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Sync Controls & User Profile */}
         <div className="flex items-center gap-2.5">
+          {/* Offline / Pending Updates Connectivity Indicator */}
+          <ConnectivityStatusIndicator
+            isOnline={isOnline}
+            pendingUpdatesCount={pendingUpdatesCount}
+            isSyncingPending={isSyncingPending}
+            onOpenPendingModal={onOpenPendingModal || (() => {})}
+            onQuickSyncPending={onQuickSyncPending || (() => {})}
+          />
+
           {/* Last sync & Auto-sync badge */}
           {lastSynced && (
             <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800">

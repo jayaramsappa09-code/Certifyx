@@ -7,6 +7,8 @@ import {
   SheetSyncProof,
   DriveCertificateFile,
   SheetRowRecord,
+  PendingUpdateRecord,
+  ToggleFieldType,
 } from '../types';
 import { DEFAULT_ADMIN_EMAILS } from './firebaseAuth';
 
@@ -23,6 +25,7 @@ const STORAGE_KEYS = {
   DUPLICATE_RESOLUTIONS: 'ccam_duplicate_resolutions',
   LAST_SYNCED_DATA: 'ccam_last_synced_data',
   SHEET_PROOF: 'ccam_last_sheet_sync_proof',
+  PENDING_UPDATES: 'ccam_offline_pending_updates',
 };
 
 // 1. Submitted status (Map: normalized rollNo -> boolean)
@@ -372,3 +375,121 @@ export function saveSheetSyncProof(proof: SheetSyncProof): void {
     console.error('Failed to save sheet sync proof:', e);
   }
 }
+
+// 11. Offline Pending Updates Buffer
+export function getPendingUpdates(): PendingUpdateRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PENDING_UPDATES);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to read pending updates:', e);
+    return [];
+  }
+}
+
+export function savePendingUpdates(updates: PendingUpdateRecord[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.PENDING_UPDATES, JSON.stringify(updates));
+  } catch (e) {
+    console.error('Failed to save pending updates:', e);
+  }
+}
+
+export function addPendingUpdate(
+  rollNo: string,
+  field: ToggleFieldType,
+  newValue: boolean,
+  studentName?: string
+): PendingUpdateRecord {
+  const updates = getPendingUpdates();
+  const normalizedRoll = rollNo.toUpperCase().trim();
+
+  // If there's an existing pending update for the same rollNo and field, update or replace it
+  const existingIdx = updates.findIndex(
+    (u) => u.rollNo === normalizedRoll && u.field === field
+  );
+
+  const newRecord: PendingUpdateRecord = {
+    id: `pending_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    rollNo: normalizedRoll,
+    studentName,
+    field,
+    newValue,
+    timestamp: new Date().toISOString(),
+    status: 'PENDING',
+    retryCount: 0,
+  };
+
+  if (existingIdx >= 0) {
+    updates[existingIdx] = newRecord;
+  } else {
+    updates.push(newRecord);
+  }
+
+  savePendingUpdates(updates);
+  return newRecord;
+}
+
+export function addBatchPendingUpdates(
+  items: Array<{ rollNo: string; field: ToggleFieldType; newValue: boolean; studentName?: string }>
+): void {
+  const updates = getPendingUpdates();
+  const now = new Date().toISOString();
+
+  for (const item of items) {
+    const normalizedRoll = item.rollNo.toUpperCase().trim();
+    const existingIdx = updates.findIndex(
+      (u) => u.rollNo === normalizedRoll && u.field === item.field
+    );
+
+    const record: PendingUpdateRecord = {
+      id: `pending_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      rollNo: normalizedRoll,
+      studentName: item.studentName,
+      field: item.field,
+      newValue: item.newValue,
+      timestamp: now,
+      status: 'PENDING',
+      retryCount: 0,
+    };
+
+    if (existingIdx >= 0) {
+      updates[existingIdx] = record;
+    } else {
+      updates.push(record);
+    }
+  }
+
+  savePendingUpdates(updates);
+}
+
+export function removePendingUpdate(id: string): void {
+  const updates = getPendingUpdates();
+  const filtered = updates.filter((u) => u.id !== id);
+  savePendingUpdates(filtered);
+}
+
+export function clearPendingUpdates(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.PENDING_UPDATES);
+  } catch (e) {
+    console.error('Failed to clear pending updates:', e);
+  }
+}
+
+export function updatePendingUpdateStatus(
+  id: string,
+  status: PendingUpdateRecord['status'],
+  error?: string
+): void {
+  const updates = getPendingUpdates();
+  const item = updates.find((u) => u.id === id);
+  if (item) {
+    item.status = status;
+    if (error) item.error = error;
+    if (status === 'FAILED') item.retryCount = (item.retryCount || 0) + 1;
+    savePendingUpdates(updates);
+  }
+}
+

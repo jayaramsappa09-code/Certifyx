@@ -31,6 +31,11 @@ import {
   saveCachedSyncedData,
   getLastSheetSyncProof,
   saveSheetSyncProof,
+  getPendingUpdates,
+  addPendingUpdate,
+  addBatchPendingUpdates,
+  removePendingUpdate,
+  clearPendingUpdates,
 } from './services/storageService';
 import {
   exportClassSummaryCsv,
@@ -54,6 +59,7 @@ import {
   AuthUser,
   SheetSyncProof,
   SheetRowRecord,
+  PendingUpdateRecord,
 } from './types';
 
 // Components
@@ -72,6 +78,8 @@ import { SetupWizardModal } from './components/SetupWizardModal';
 import { AccessDeniedScreen } from './components/AccessDeniedScreen';
 import { GoogleConnectModal } from './components/GoogleConnectModal';
 import { SheetSyncProofModal } from './components/SheetSyncProofModal';
+import { GlobalSyncProgressBar, SyncProgressState } from './components/GlobalSyncProgressBar';
+import { OfflinePendingUpdatesModal } from './components/OfflinePendingUpdatesModal';
 import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
@@ -114,7 +122,16 @@ export default function App() {
   const [sheetSyncProof, setSheetSyncProof] = useState<SheetSyncProof | null>(getLastSheetSyncProof());
   const [isRefreshingProof, setIsRefreshingProof] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgressState | null>(null);
   const [globalBanner, setGlobalBanner] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // Offline Pending Updates Buffer State
+  const [isOnline, setIsOnline] = useState<boolean>(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [pendingUpdates, setPendingUpdates] = useState<PendingUpdateRecord[]>(getPendingUpdates());
+  const [showPendingUpdatesModal, setShowPendingUpdatesModal] = useState(false);
+  const [isSyncingPending, setIsSyncingPending] = useState(false);
 
   // Reference for auto-sync timer and post-auth pending actions
   const autoSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -186,6 +203,105 @@ export default function App() {
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setGlobalBanner({ message, type });
     setTimeout(() => setGlobalBanner(null), 4000);
+  };
+
+  // Sync Pending Updates when coming back online or when manually triggered
+  const handleSyncPendingUpdates = async () => {
+    const updates = getPendingUpdates();
+    if (updates.length === 0) return;
+
+    if (!navigator.onLine) {
+      showToast('You are offline. Pending changes remain queued in local storage.', 'error');
+      return;
+    }
+
+    setIsSyncingPending(true);
+    try {
+      // Re-apply all pending updates into local status maps to ensure consistency
+      updates.forEach((u) => {
+        if (u.field === 'submitted') {
+          saveSubmittedStatus(u.rollNo, u.newValue);
+        } else if (u.field === 'driveUploaded') {
+          saveDriveStatusOverride(u.rollNo, u.newValue);
+        } else if (u.field === 'sheetUpdated') {
+          saveSheetStatusOverride(u.rollNo, u.newValue);
+        }
+      });
+
+      // If Google token is available, trigger full sync engine with cloud Drive / Sheets
+      const token = accessToken || getAccessToken();
+      if (token && (driveConfig?.folderId || sheetConfig?.spreadsheetId)) {
+        await handleSyncNow();
+      } else {
+        // Re-run local sync engine with cached data
+        const cached = getCachedSyncedData();
+        const driveFiles = cached?.driveFiles || [];
+        const sheetRows = cached?.sheetRows || [];
+        const syncResult = runSyncEngine({
+          driveFiles,
+          sheetRows,
+          userEmail: currentUser?.email || 'admin',
+          useSeedDataIfEmpty: false,
+        });
+        applySyncResult(syncResult);
+      }
+
+      // Clear the pending buffer now that they have been synchronized
+      clearPendingUpdates();
+      setPendingUpdates([]);
+
+      addAuditLog(
+        'Offline buffer synchronized',
+        currentUser?.email || 'admin',
+        `Synchronized ${updates.length} offline manual change(s) with Drive/Sheets.`,
+        'SYNC'
+      );
+      showToast(`Successfully synchronized ${updates.length} offline change(s)!`, 'success');
+    } catch (e: any) {
+      console.error('Failed to sync pending updates:', e);
+      showToast('Failed to sync pending updates. Will retry upon next connection.', 'error');
+    } finally {
+      setIsSyncingPending(false);
+    }
+  };
+
+  // Online / Offline Connectivity Detection & Automatic Pending Sync
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      const pending = getPendingUpdates();
+      if (pending.length > 0) {
+        showToast(`Back online! Syncing ${pending.length} pending offline change(s)...`, 'info');
+        handleSyncPendingUpdates();
+      } else {
+        showToast('Internet connection restored.', 'info');
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      showToast('You are now working offline. Changes are saved to local storage buffer.', 'info');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [driveConfig, sheetConfig, accessToken]);
+
+  const handleClearPendingUpdates = () => {
+    clearPendingUpdates();
+    setPendingUpdates([]);
+    showToast('Offline pending updates buffer cleared.', 'info');
+  };
+
+  const handleRemovePendingUpdate = (id: string) => {
+    removePendingUpdate(id);
+    setPendingUpdates(getPendingUpdates());
+    showToast('Removed item from offline updates queue.', 'info');
   };
 
   // Google Login Handler
@@ -275,6 +391,12 @@ export default function App() {
 
     try {
       setIsSyncing(true);
+      setSyncProgress({
+        step: 1,
+        totalSteps: 4,
+        title: 'Initializing sync engine & verifying credentials...',
+        progressPercent: 15,
+      });
       addAuditLog('Sync started', currentUser?.email || 'admin', 'Triggered synchronization engine', 'SYNC');
 
       let fetchedDriveFiles: DriveCertificateFile[] = [];
@@ -284,6 +406,13 @@ export default function App() {
       // 1. Read Google Drive
       if (driveConfig?.folderId) {
         try {
+          setSyncProgress({
+            step: 2,
+            totalSteps: 4,
+            title: 'Scanning Google Drive certificates & subfolders...',
+            detail: driveConfig.folderName || 'Drive Folder',
+            progressPercent: 38,
+          });
           fetchedDriveFiles = await listCertificateFilesInFolder(driveConfig.folderId, currentToken);
           // Update driveConfig lastSynced
           const updatedDrive = {
@@ -309,6 +438,13 @@ export default function App() {
       // 2. Read Google Sheets
       if (sheetConfig?.spreadsheetId && sheetConfig.sheetName) {
         try {
+          setSyncProgress({
+            step: 3,
+            totalSteps: 4,
+            title: 'Reading Google Sheets responses & column rows...',
+            detail: sheetConfig.spreadsheetName || 'Spreadsheet',
+            progressPercent: 68,
+          });
           const sheetResult = await readSpreadsheetValues(
             sheetConfig.spreadsheetId,
             sheetConfig.sheetName,
@@ -358,6 +494,14 @@ export default function App() {
       }
 
       // 3. Execute Core Sync Engine
+      setSyncProgress({
+        step: 4,
+        totalSteps: 4,
+        title: 'Matching certificates across 67-student roster...',
+        detail: `${fetchedDriveFiles.length} files • ${fetchedSheetRows.length} rows`,
+        progressPercent: 90,
+      });
+
       const syncResult = runSyncEngine({
         driveFiles: fetchedDriveFiles,
         sheetRows: fetchedSheetRows,
@@ -380,6 +524,13 @@ export default function App() {
       // Directly apply sync result to keep dashboard and student statuses in sync
       applySyncResult(syncResult);
       setShowSyncReportModal(true);
+
+      setSyncProgress({
+        step: 4,
+        totalSteps: 4,
+        title: 'Synchronization complete!',
+        progressPercent: 100,
+      });
     } catch (e: any) {
       console.error('Sync failed:', e);
       if (isAuthExpiredError(e)) {
@@ -415,6 +566,15 @@ export default function App() {
 
     try {
       setIsRefreshingProof(true);
+      setIsSyncing(true);
+      setSyncProgress({
+        step: 1,
+        totalSteps: 2,
+        title: 'Fetching live rows from Google Sheets API...',
+        detail: sheetConfig.spreadsheetName || 'Sheet',
+        progressPercent: 45,
+      });
+
       const sheetResult = await readSpreadsheetValues(
         sheetConfig.spreadsheetId,
         sheetConfig.sheetName,
@@ -442,6 +602,14 @@ export default function App() {
       setSheetSyncProof(proof);
       saveSheetSyncProof(proof);
 
+      setSyncProgress({
+        step: 2,
+        totalSteps: 2,
+        title: 'Auditing rows against 67-student roster...',
+        detail: `${proof.matchedCount} class matches`,
+        progressPercent: 90,
+      });
+
       // Re-run sync engine with existing cached drive files
       const cached = getCachedSyncedData();
       const driveFiles = cached?.driveFiles || [];
@@ -460,6 +628,13 @@ export default function App() {
 
       applySyncResult(syncResult);
       showToast(`Sheet proof refreshed! ${proof.matchedCount} verified class student submissions.`, 'success');
+
+      setSyncProgress({
+        step: 2,
+        totalSteps: 2,
+        title: 'Sheet proof updated!',
+        progressPercent: 100,
+      });
     } catch (e: any) {
       console.error('Refresh proof error:', e);
       if (isAuthExpiredError(e)) {
@@ -474,6 +649,7 @@ export default function App() {
       }
     } finally {
       setIsRefreshingProof(false);
+      setIsSyncing(false);
     }
   };
 
@@ -1008,6 +1184,9 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
+      {/* Global Sync Loading Progress Bar & Capsule */}
+      <GlobalSyncProgressBar isSyncing={isSyncing} syncProgress={syncProgress} />
+
       {/* Toast Notification Banner */}
       {globalBanner && (
         <div

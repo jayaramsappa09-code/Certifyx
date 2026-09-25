@@ -152,3 +152,18 @@ export interface AppSettings {
   enableParentFolderInheritance?: boolean;
   enableSheetLinkMatching?: boolean;
 }
+
+export type ToggleFieldType = 'submitted' | 'driveUploaded' | 'sheetUpdated';
+
+export interface PendingUpdateRecord {
+  id: string;
+  rollNo: string;
+  studentName?: string;
+  field: ToggleFieldType;
+  newValue: boolean;
+  timestamp: string;
+  status: 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED';
+  error?: string;
+  retryCount?: number;
+}
+
