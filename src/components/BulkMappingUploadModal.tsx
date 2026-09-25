@@ -197,7 +197,7 @@ export const BulkMappingUploadModal: React.FC<BulkMappingUploadModalProps> = ({
 
       const normRoll = normalizeRollNumber(rawRollNo);
       const isValidRoster = isValidClassRollNumber(normRoll);
-      const studentName = ROSTER_MAP.get(normRoll) || undefined;
+      const studentName = ROSTER_MAP.get(normRoll)?.name || undefined;
 
       // Check if this filename matches an unidentified file currently in queue
       const cleanFilename = rawFilename.trim();

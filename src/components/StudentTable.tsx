@@ -688,6 +688,49 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           })}
         </div>
 
+        {/* Dynamic Sort Option Bar (Highly Visible Sort Controls for Desktop & Mobile views) */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/60 text-xs">
+          <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px] mr-1 shrink-0 flex items-center gap-1">
+            <ArrowUpDown className="w-3.5 h-3.5 text-blue-400" /> Active Sort:
+          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {[
+              { id: 'rollNo', label: 'Roll No' },
+              { id: 'name', label: 'Student Name' },
+              { id: 'overallStatus', label: 'Overall Status' },
+              { id: 'driveUploaded', label: 'Drive Status' },
+              { id: 'sheetUpdated', label: 'Sheet Status' },
+              { id: 'submitted', label: 'Submission' },
+            ].map((item) => {
+              const isSelected = sortField === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSort(item.id as any)}
+                  className={`px-2.5 py-1 rounded-xl flex items-center gap-1.5 transition cursor-pointer font-medium ${
+                    isSelected
+                      ? 'bg-blue-950/80 text-blue-300 border border-blue-500/40 shadow-sm shadow-blue-950/50 font-bold'
+                      : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-slate-800/80'
+                  }`}
+                  title={`Sort by ${item.label}`}
+                >
+                  <span>{item.label}</span>
+                  {isSelected ? (
+                    sortDirection === 'asc' ? (
+                      <ArrowUp className="w-3 h-3 text-blue-400" />
+                    ) : (
+                      <ArrowDown className="w-3 h-3 text-blue-400" />
+                    )
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3 text-slate-700 group-hover:text-slate-500" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Active Results Summary & Last Scanned Badge */}
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 pt-1 border-t border-slate-800/60">
           <div className="flex items-center gap-2">
