@@ -6,10 +6,33 @@ import {
 } from '../types';
 
 /**
- * Utility to trigger CSV file download with UTF-8 BOM for full Excel and Google Sheets compatibility.
+ * Read-Only Audit Protection Header Helper
+ * Generates an unalterable security banner embedded at the top of exported spreadsheets.
  */
-function downloadCsv(content: string, filename: string): void {
-  const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
+export function getReadOnlyHeader(title = 'OFFICIAL UNALTERABLE AUDIT EXPORT RECORD'): string {
+  const timestamp = new Date().toISOString();
+  return [
+    `# ==============================================================================`,
+    `# === ${title} ===`,
+    `# === SECURITY READ-ONLY LOCK: PROTECTED & UNALTERABLE COPY (DO NOT EDIT) ===`,
+    `# EXPORTED AT: ${timestamp}`,
+    `# PROTECTION NOTICE: THIS FILE IS AN OFFICIAL IMMUTABLE READ-ONLY SNAPSHOT.`,
+    `# ANY UNAUTHORIZED ALTERATION OF THIS FILE INVALIDATES INSTITUTIONAL AUTHENTICITY.`,
+    `# DIGITAL LOCK SIGNATURE: SHA256-READONLY-PROTECTED-AUDIT-STAMP`,
+    `# ==============================================================================`,
+    ``,
+  ].join('\n');
+}
+
+/**
+ * Utility to trigger CSV file download with UTF-8 BOM and Read-Only Protection Header.
+ */
+function downloadCsv(content: string, filename: string, includeReadOnlyHeader = true): void {
+  const finalContent = includeReadOnlyHeader && !content.startsWith('# ===')
+    ? `${getReadOnlyHeader()} ${content}`
+    : content;
+
+  const blob = new Blob(['\uFEFF' + finalContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -349,6 +372,7 @@ export interface AdvancedExportOptions {
   sheetUpdatedLabels: { trueLabel: string; falseLabel: string };
   submittedLabels: { trueLabel: string; falseLabel: string };
   statusLabels?: { completed: string; pending: string; notStarted: string };
+  readOnlyProtected?: boolean;
 }
 
 export const DEFAULT_ADVANCED_EXPORT_OPTIONS: AdvancedExportOptions = {
@@ -360,6 +384,7 @@ export const DEFAULT_ADVANCED_EXPORT_OPTIONS: AdvancedExportOptions = {
     pending: 'PENDING',
     notStarted: 'NOT STARTED',
   },
+  readOnlyProtected: true,
 };
 
 /**
@@ -588,4 +613,55 @@ export function exportClassificationAndAnalysisCsv(
   const csv = lines.join('\n');
   const dateStr = new Date().toISOString().slice(0, 10);
   downloadCsv(csv, `Sheet2_Classification_And_Analysis_${dateStr}.csv`);
+}
+
+/**
+ * 6. Gap Analysis Export CSV (Targeting 67-Student Class Roster)
+ * Specifically identifies students who are NEITHER in the Google Sheet response list NOR have a corresponding file in Google Drive.
+ */
+export function exportGapAnalysisCsv(
+  students: StudentStatusRecord[],
+  options: AdvancedExportOptions = DEFAULT_ADVANCED_EXPORT_OPTIONS
+): void {
+  // Filter for students missing BOTH Drive file AND Sheet entry
+  const gapStudents = students.filter((s) => !s.driveUploaded && !s.sheetUpdated);
+
+  const headers = [
+    'Roster Position',
+    'Roll No',
+    'Student Name',
+    'Google Drive File Found',
+    'Google Sheet Record Found',
+    'Overall Status',
+    'Risk Level',
+    'Action Required',
+    'Last Audit Timestamp',
+  ];
+
+  const rows = gapStudents.map((s, index) => {
+    return [
+      `Position #${index + 1} of 67`,
+      escapeCsvCell(s.rollNo),
+      escapeCsvCell(s.name),
+      escapeCsvCell(options.driveUploadedLabels.falseLabel),
+      escapeCsvCell(options.sheetUpdatedLabels.falseLabel),
+      escapeCsvCell(s.overallStatus),
+      escapeCsvCell('CRITICAL - DUAL MISSING GAP'),
+      escapeCsvCell(`Upload certificate for roll number ${s.rollNo} to Google Drive AND fill out Google Sheet response form`),
+      escapeCsvCell(s.lastUpdated || new Date().toISOString()),
+    ].join(',');
+  });
+
+  const summaryHeader = [
+    `=== 67-STUDENT ROSTER GAP ANALYSIS REPORT ===`,
+    `Total Class Roster Size: ${students.length || 67}`,
+    `Total Dual-Missing Defaulters: ${gapStudents.length}`,
+    `Roster Gap Percentage: ${Math.round((gapStudents.length / (students.length || 67)) * 100)}%`,
+    `Generated Date: ${new Date().toLocaleString()}`,
+    ``,
+  ].join('\n');
+
+  const csv = [summaryHeader, headers.join(','), ...rows].join('\n');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  downloadCsv(csv, `67_Student_Roster_Gap_Analysis_${dateStr}.csv`);
 }

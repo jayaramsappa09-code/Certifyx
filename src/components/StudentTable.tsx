@@ -6,6 +6,7 @@ import {
   ExternalLink,
   CheckCircle2,
   XCircle,
+  AlertCircle,
   Clock,
   Eye,
   CheckSquare,
@@ -23,6 +24,9 @@ import {
   Sparkles,
   Link,
   Copy,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { StudentStatusRecord } from '../types';
 
@@ -112,7 +116,22 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [copiedRollNo, setCopiedRollNo] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<
+    'rollNo' | 'name' | 'overallStatus' | 'driveUploaded' | 'sheetUpdated' | 'submitted'
+  >('rollNo');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleSort = (
+    field: 'rollNo' | 'name' | 'overallStatus' | 'driveUploaded' | 'sheetUpdated' | 'submitted'
+  ) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
 
   const handleCopyLink = async (
     file: { webViewLink?: string; id?: string },
@@ -188,6 +207,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
       case 'COMPLETED':
         result = result.filter((s) => s.overallStatus === 'COMPLETED');
         break;
+      case 'INCOMPLETE':
+        result = result.filter((s) => s.overallStatus !== 'COMPLETED');
+        break;
       case 'PENDING':
         result = result.filter((s) => s.overallStatus === 'PENDING');
         break;
@@ -197,14 +219,19 @@ export const StudentTable: React.FC<StudentTableProps> = ({
       case 'DRIVE_UPLOADED':
         result = result.filter((s) => s.driveUploaded);
         break;
+      case 'MISSING_DRIVE':
       case 'DRIVE_PENDING':
         result = result.filter((s) => !s.driveUploaded);
         break;
       case 'SHEET_UPDATED':
         result = result.filter((s) => s.sheetUpdated);
         break;
+      case 'MISSING_SHEET':
       case 'SHEET_PENDING':
         result = result.filter((s) => !s.sheetUpdated);
+        break;
+      case 'DUAL_MISSING':
+        result = result.filter((s) => !s.driveUploaded && !s.sheetUpdated);
         break;
       case 'SUBMITTED':
         result = result.filter((s) => s.submitted);
@@ -228,8 +255,35 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         break;
     }
 
+    // 3. Sort Results
+    result.sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'rollNo') {
+        cmp = a.rollNo.localeCompare(b.rollNo, undefined, { numeric: true, sensitivity: 'base' });
+      } else if (sortField === 'name') {
+        cmp = a.name.localeCompare(b.name);
+      } else if (sortField === 'overallStatus') {
+        const statusOrder: Record<string, number> = {
+          COMPLETED: 3,
+          PENDING: 2,
+          'NOT STARTED': 1,
+        };
+        const scoreA = statusOrder[a.overallStatus] || 0;
+        const scoreB = statusOrder[b.overallStatus] || 0;
+        cmp = scoreA - scoreB;
+      } else if (sortField === 'driveUploaded') {
+        cmp = (a.driveUploaded ? 1 : 0) - (b.driveUploaded ? 1 : 0);
+      } else if (sortField === 'sheetUpdated') {
+        cmp = (a.sheetUpdated ? 1 : 0) - (b.sheetUpdated ? 1 : 0);
+      } else if (sortField === 'submitted') {
+        cmp = (a.submitted ? 1 : 0) - (b.submitted ? 1 : 0);
+      }
+
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+
     return result;
-  }, [students, searchQuery, activeFilter]);
+  }, [students, searchQuery, activeFilter, sortField, sortDirection]);
 
   // Bulk Selection Helpers
   const isAllFilteredSelected =
@@ -308,6 +362,28 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     }
   };
 
+  const issueCounts = useMemo(() => {
+    return {
+      all: students.length || 67,
+      missingDrive: students.filter((s) => !s.driveUploaded).length,
+      missingSheet: students.filter((s) => !s.sheetUpdated).length,
+      incomplete: students.filter((s) => s.overallStatus !== 'COMPLETED').length,
+      dualMissing: students.filter((s) => !s.driveUploaded && !s.sheetUpdated).length,
+      unconfirmed: students.filter((s) => !s.submitted).length,
+      completed: students.filter((s) => s.overallStatus === 'COMPLETED').length,
+    };
+  }, [students]);
+
+  const syncIssueChips = [
+    { id: 'ALL', label: 'All Roster', count: issueCounts.all, color: 'blue' },
+    { id: 'MISSING_DRIVE', label: 'Missing Drive', count: issueCounts.missingDrive, color: 'amber' },
+    { id: 'MISSING_SHEET', label: 'Missing Sheet', count: issueCounts.missingSheet, color: 'purple' },
+    { id: 'INCOMPLETE', label: 'Incomplete', count: issueCounts.incomplete, color: 'red' },
+    { id: 'DUAL_MISSING', label: 'Missing Both', count: issueCounts.dualMissing, color: 'rose' },
+    { id: 'SUBMISSION_PENDING', label: 'Unconfirmed', count: issueCounts.unconfirmed, color: 'yellow' },
+    { id: 'COMPLETED', label: 'Completed', count: issueCounts.completed, color: 'emerald' },
+  ];
+
   const filterOptions = [
     { id: 'ALL', label: 'All (67)' },
     { id: 'COMPLETED', label: 'Completed (All 3 Ticked)' },
@@ -323,6 +399,64 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Synchronization Issue Quick Filter Chips */}
+      <div className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-3.5 space-y-2 shadow-lg">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-blue-400" />
+            Quick Synchronization Issue Filters:
+          </span>
+          <span className="text-[10px] text-slate-500 font-mono">
+            Click chip to filter table visibility
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {syncIssueChips.map((chip) => {
+            const isActive =
+              activeFilter === chip.id ||
+              (chip.id === 'MISSING_DRIVE' && activeFilter === 'DRIVE_PENDING') ||
+              (chip.id === 'MISSING_SHEET' && activeFilter === 'SHEET_PENDING');
+
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setActiveFilter(chip.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 border shadow-sm ${
+                  isActive
+                    ? chip.color === 'amber'
+                      ? 'bg-amber-950 text-amber-200 border-amber-600 shadow-amber-950/50'
+                      : chip.color === 'purple'
+                      ? 'bg-purple-950 text-purple-200 border-purple-600 shadow-purple-950/50'
+                      : chip.color === 'red'
+                      ? 'bg-red-950 text-red-200 border-red-600 shadow-red-950/50'
+                      : chip.color === 'rose'
+                      ? 'bg-rose-950 text-rose-200 border-rose-600 shadow-rose-950/50'
+                      : chip.color === 'yellow'
+                      ? 'bg-yellow-950 text-yellow-200 border-yellow-600 shadow-yellow-950/50'
+                      : chip.color === 'emerald'
+                      ? 'bg-emerald-950 text-emerald-200 border-emerald-600 shadow-emerald-950/50'
+                      : 'bg-blue-600 text-white border-blue-500 shadow-blue-600/30'
+                    : 'bg-slate-950/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border-slate-800/80'
+                }`}
+              >
+                <span>{chip.label}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                    isActive
+                      ? 'bg-black/40 text-white'
+                      : 'bg-slate-900 text-slate-400 border border-slate-800'
+                  }`}
+                >
+                  {chip.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Controls Bar: Search, Filters, and Multi-Part CSV Exports */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -747,28 +881,137 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     )}
                   </button>
                 </th>
-                <th className="py-3.5 px-4 w-32">Roll No</th>
-                <th className="py-3.5 px-4">Student Name</th>
+
+                {/* Sortable Roll No */}
+                <th className="py-3.5 px-4 w-32">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('rollNo')}
+                    className="flex items-center gap-1.5 font-semibold hover:text-white transition cursor-pointer group text-left"
+                    title="Click to sort by Roll Number"
+                  >
+                    <span>Roll No</span>
+                    {sortField === 'rollNo' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3.5 h-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" />
+                    )}
+                  </button>
+                </th>
+
+                {/* Sortable Student Name */}
+                <th className="py-3.5 px-4">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('name')}
+                    className="flex items-center gap-1.5 font-semibold hover:text-white transition cursor-pointer group text-left"
+                    title="Click to sort by Student Name"
+                  >
+                    <span>Student Name</span>
+                    {sortField === 'name' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3.5 h-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" />
+                    )}
+                  </button>
+                </th>
+
                 <th className="py-3.5 px-4">All Certificates Uploaded (Unified)</th>
+
+                {/* Sortable Drive Uploaded */}
                 <th className="py-3.5 px-4 text-center w-28">
-                  <span className="flex items-center justify-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('driveUploaded')}
+                    className="inline-flex items-center justify-center gap-1 font-semibold hover:text-white transition cursor-pointer group"
+                    title="Click to sort by Drive Upload Status"
+                  >
                     <HardDrive className="w-3.5 h-3.5 text-blue-400" />
-                    Drive (Admin)
-                  </span>
+                    <span>Drive</span>
+                    {sortField === 'driveUploaded' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3.5 h-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" />
+                    )}
+                  </button>
                 </th>
+
+                {/* Sortable Sheet Updated */}
                 <th className="py-3.5 px-4 text-center w-28">
-                  <span className="flex items-center justify-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('sheetUpdated')}
+                    className="inline-flex items-center justify-center gap-1 font-semibold hover:text-white transition cursor-pointer group"
+                    title="Click to sort by Sheet Record Status"
+                  >
                     <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                    Sheet (Admin)
-                  </span>
+                    <span>Sheet</span>
+                    {sortField === 'sheetUpdated' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3.5 h-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" />
+                    )}
+                  </button>
                 </th>
+
+                {/* Sortable Admin Confirmed */}
                 <th className="py-3.5 px-4 text-center w-28">
-                  <span className="flex items-center justify-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('submitted')}
+                    className="inline-flex items-center justify-center gap-1 font-semibold hover:text-white transition cursor-pointer group"
+                    title="Click to sort by Admin Confirmed Status"
+                  >
                     <CheckSquare className="w-3.5 h-3.5 text-purple-400" />
-                    Submitted
-                  </span>
+                    <span>Submitted</span>
+                    {sortField === 'submitted' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3.5 h-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" />
+                    )}
+                  </button>
                 </th>
-                <th className="py-3.5 px-4 text-center w-32">Overall Status</th>
+
+                {/* Sortable Overall Status */}
+                <th className="py-3.5 px-4 text-center w-36">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('overallStatus')}
+                    className="inline-flex items-center justify-center gap-1 font-semibold hover:text-white transition cursor-pointer group"
+                    title="Click to sort by Overall Verification Status"
+                  >
+                    <span>Overall Status</span>
+                    {sortField === 'overallStatus' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3.5 h-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" />
+                    )}
+                  </button>
+                </th>
                 <th className="py-3.5 px-4 text-right w-24">Actions</th>
               </tr>
             </thead>
