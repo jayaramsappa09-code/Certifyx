@@ -1,0 +1,6 @@
+{
+  "name": "Class Certificate Automation Manager",
+  "description": "Automate synchronization and tracking of class student certificates between Google Drive and Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

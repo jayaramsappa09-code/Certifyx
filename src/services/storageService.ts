@@ -1,0 +1,230 @@
+import {
+  AuditLogEntry,
+  GoogleDriveFolderConfig,
+  GoogleSheetConfig,
+  AppSettings,
+  SyncReport,
+} from '../types';
+import { DEFAULT_ADMIN_EMAILS } from './firebaseAuth';
+
+const STORAGE_KEYS = {
+  SUBMITTED_STATUS: 'ccam_submitted_status_map',
+  DRIVE_CONFIG: 'ccam_drive_folder_config',
+  SHEET_CONFIG: 'ccam_google_sheet_config',
+  SETTINGS: 'ccam_app_settings',
+  SYNC_HISTORY: 'ccam_sync_history',
+  AUDIT_LOGS: 'ccam_audit_logs',
+  MANUAL_OVERRIDES: 'ccam_manual_file_overrides',
+  DUPLICATE_RESOLUTIONS: 'ccam_duplicate_resolutions',
+};
+
+// 1. Submitted status (Map: normalized rollNo -> boolean)
+export function getSubmittedStatusMap(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SUBMITTED_STATUS);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to read submitted status map:', e);
+    return {};
+  }
+}
+
+export function saveSubmittedStatus(rollNo: string, submitted: boolean): void {
+  try {
+    const map = getSubmittedStatusMap();
+    map[rollNo.toUpperCase().trim()] = submitted;
+    localStorage.setItem(STORAGE_KEYS.SUBMITTED_STATUS, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to save submitted status:', e);
+  }
+}
+
+export function setBatchSubmittedStatus(updates: Record<string, boolean>): void {
+  try {
+    const map = getSubmittedStatusMap();
+    for (const [r, s] of Object.entries(updates)) {
+      map[r.toUpperCase().trim()] = s;
+    }
+    localStorage.setItem(STORAGE_KEYS.SUBMITTED_STATUS, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to save batch submitted status:', e);
+  }
+}
+
+// 2. Drive Folder Config
+export function getSavedDriveConfig(): GoogleDriveFolderConfig | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DRIVE_CONFIG);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveDriveConfig(config: GoogleDriveFolderConfig | null): void {
+  try {
+    if (config) {
+      localStorage.setItem(STORAGE_KEYS.DRIVE_CONFIG, JSON.stringify(config));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.DRIVE_CONFIG);
+    }
+  } catch (e) {
+    console.error('Failed to save drive config:', e);
+  }
+}
+
+// 3. Google Sheet Config
+export function getSavedSheetConfig(): GoogleSheetConfig | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SHEET_CONFIG);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSheetConfig(config: GoogleSheetConfig | null): void {
+  try {
+    if (config) {
+      localStorage.setItem(STORAGE_KEYS.SHEET_CONFIG, JSON.stringify(config));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.SHEET_CONFIG);
+    }
+  } catch (e) {
+    console.error('Failed to save sheet config:', e);
+  }
+}
+
+// 4. App Settings
+export function getAppSettings(): AppSettings {
+  const defaults: AppSettings = {
+    autoSyncIntervalMinutes: 0,
+    enableSpreadsheetWrite: false,
+    adminEmails: DEFAULT_ADMIN_EMAILS,
+  };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    return { ...defaults, ...parsed };
+  } catch {
+    return defaults;
+  }
+}
+
+export function saveAppSettings(settings: Partial<AppSettings>): AppSettings {
+  const current = getAppSettings();
+  const updated = { ...current, ...settings };
+  try {
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+  } catch (e) {
+    console.error('Failed to save settings:', e);
+  }
+  return updated;
+}
+
+// 5. Sync Reports & History
+export function getSyncHistory(): SyncReport[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SYNC_HISTORY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addSyncReport(report: SyncReport): void {
+  try {
+    const history = getSyncHistory();
+    history.unshift(report);
+    // Keep last 50 reports
+    const trimmed = history.slice(0, 50);
+    localStorage.setItem(STORAGE_KEYS.SYNC_HISTORY, JSON.stringify(trimmed));
+  } catch (e) {
+    console.error('Failed to save sync report:', e);
+  }
+}
+
+// 6. Audit Logs
+export function getAuditLogs(): AuditLogEntry[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addAuditLog(
+  action: string,
+  user: string,
+  details: string,
+  category: AuditLogEntry['category'] = 'SYNC'
+): AuditLogEntry {
+  const entry: AuditLogEntry = {
+    id: 'log_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+    timestamp: new Date().toISOString(),
+    action,
+    user: user || 'admin',
+    details,
+    category,
+  };
+  try {
+    const logs = getAuditLogs();
+    logs.unshift(entry);
+    // Keep last 200 logs
+    const trimmed = logs.slice(0, 200);
+    localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(trimmed));
+  } catch (e) {
+    console.error('Failed to save audit log:', e);
+  }
+  return entry;
+}
+
+// 7. Manual File Overrides (Assign roll number or certificate type to an unidentified file)
+export interface ManualFileOverride {
+  fileId: string;
+  assignedRollNo?: string;
+  assignedCertType?: string;
+  resolvedAt: string;
+}
+
+export function getManualFileOverrides(): Record<string, ManualFileOverride> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MANUAL_OVERRIDES);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveManualFileOverride(override: ManualFileOverride): void {
+  try {
+    const overrides = getManualFileOverrides();
+    overrides[override.fileId] = override;
+    localStorage.setItem(STORAGE_KEYS.MANUAL_OVERRIDES, JSON.stringify(overrides));
+  } catch (e) {
+    console.error('Failed to save manual file override:', e);
+  }
+}
+
+// 8. Duplicate resolutions (Keep / Ignore / Review)
+export function getDuplicateResolutions(): Record<string, 'KEEP' | 'IGNORE' | 'REVIEW'> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DUPLICATE_RESOLUTIONS);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveDuplicateResolution(fileId: string, resolution: 'KEEP' | 'IGNORE' | 'REVIEW'): void {
+  try {
+    const resolutions = getDuplicateResolutions();
+    resolutions[fileId] = resolution;
+    localStorage.setItem(STORAGE_KEYS.DUPLICATE_RESOLUTIONS, JSON.stringify(resolutions));
+  } catch (e) {
+    console.error('Failed to save duplicate resolution:', e);
+  }
+}
