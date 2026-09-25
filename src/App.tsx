@@ -7,6 +7,9 @@ import {
   getAccessToken,
   isAuthorizedAdmin,
   DEFAULT_ADMIN_EMAILS,
+  isTokenExpired,
+  isAuthExpiredError,
+  handleTokenExpiry,
 } from './services/firebaseAuth';
 import {
   getSavedDriveConfig,
@@ -20,11 +23,22 @@ import {
   addAuditLog,
   saveSubmittedStatus,
   setBatchSubmittedStatus,
+  saveDriveStatusOverride,
+  setBatchDriveStatusOverride,
+  saveSheetStatusOverride,
+  setBatchSheetStatusOverride,
   getCachedSyncedData,
   saveCachedSyncedData,
   getLastSheetSyncProof,
   saveSheetSyncProof,
 } from './services/storageService';
+import {
+  exportClassSummaryCsv,
+  exportIndividualCertificatesCsv,
+  exportOutsideClassCsv,
+  exportManualReviewQueueCsv,
+  exportAuditLogsCsv,
+} from './services/csvExportService';
 import { listCertificateFilesInFolder } from './services/googleDriveService';
 import { readSpreadsheetValues } from './services/googleSheetsService';
 import { runSyncEngine, SyncEngineResult } from './services/syncEngine';
@@ -102,8 +116,9 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [globalBanner, setGlobalBanner] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Reference for auto-sync timer
+  // Reference for auto-sync timer and post-auth pending actions
   const autoSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingPostAuthActionRef = useRef<(() => void) | null>(null);
 
   // Initialize Auth state
   useEffect(() => {
@@ -210,6 +225,20 @@ export default function App() {
     addAuditLog('Admin connected', email, 'Connected Google Account', 'AUTH');
     showToast(`Google account connected as ${email}!`, 'success');
     setShowGoogleConnectModal(false);
+    setGoogleConnectError(null);
+
+    // If there was an action waiting for authentication (e.g. refreshing sheet proof), auto-resume it!
+    if (pendingPostAuthActionRef.current) {
+      const action = pendingPostAuthActionRef.current;
+      pendingPostAuthActionRef.current = null;
+      setTimeout(() => {
+        try {
+          action();
+        } catch (err) {
+          console.error('Error resuming post-auth action:', err);
+        }
+      }, 150);
+    }
   };
 
   // Google Logout Handler
@@ -227,11 +256,13 @@ export default function App() {
   const handleSyncNow = useCallback(async () => {
     if (isSyncing) return;
 
-    // Check if Google account is connected
+    // Check if Google account is connected and token is fresh
     const currentToken = accessToken || getAccessToken();
-    if (!currentToken) {
-      showToast('Please connect your Google Account first to synchronize real Drive & Sheets data.', 'info');
-      setShowSetupWizardModal(true);
+    if (!currentToken || isTokenExpired()) {
+      showToast('Google session expired or not connected. Please sign in to synchronize.', 'info');
+      setGoogleConnectError('Google authorization expired or required. Please click below to connect.');
+      pendingPostAuthActionRef.current = () => handleSyncNow();
+      setShowGoogleConnectModal(true);
       return;
     }
 
@@ -264,6 +295,13 @@ export default function App() {
           saveDriveConfig(updatedDrive);
         } catch (err: any) {
           console.error('Drive fetch error:', err);
+          if (isAuthExpiredError(err)) {
+            handleTokenExpiry();
+            setAccessToken(null);
+            pendingPostAuthActionRef.current = () => handleSyncNow();
+            setGoogleConnectError('Google authorization expired while reading Drive. Please re-authenticate.');
+            setShowGoogleConnectModal(true);
+          }
           errorMessages.push(`Google Drive: ${err.message}`);
         }
       }
@@ -308,6 +346,13 @@ export default function App() {
           saveSheetConfig(updatedSheet);
         } catch (err: any) {
           console.error('Sheet fetch error:', err);
+          if (isAuthExpiredError(err)) {
+            handleTokenExpiry();
+            setAccessToken(null);
+            pendingPostAuthActionRef.current = () => handleSyncNow();
+            setGoogleConnectError('Google authorization expired while reading Sheets. Please re-authenticate.');
+            setShowGoogleConnectModal(true);
+          }
           errorMessages.push(`Google Sheets: ${err.message}`);
         }
       }
@@ -337,7 +382,16 @@ export default function App() {
       setShowSyncReportModal(true);
     } catch (e: any) {
       console.error('Sync failed:', e);
-      showToast(e.message || 'Synchronization failed.', 'error');
+      if (isAuthExpiredError(e)) {
+        handleTokenExpiry();
+        setAccessToken(null);
+        pendingPostAuthActionRef.current = () => handleSyncNow();
+        setGoogleConnectError('Google authorization expired. Please re-authenticate to sync.');
+        setShowGoogleConnectModal(true);
+        showToast('Google authorization expired. Please re-authenticate.', 'error');
+      } else {
+        showToast(e.message || 'Synchronization failed.', 'error');
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -346,8 +400,10 @@ export default function App() {
   // Fast 1-click re-fetch for Google Sheet to inspect proof of new rows immediately
   const handleRefreshLiveSheetProof = async () => {
     const currentToken = accessToken || getAccessToken();
-    if (!currentToken) {
-      showToast('Please connect your Google Account first.', 'info');
+    if (!currentToken || isTokenExpired()) {
+      showToast('Google session expired. Please re-authenticate to refresh proof.', 'info');
+      setGoogleConnectError('Google authorization expired. Click below to sign in or reconnect to refresh live Sheet proof.');
+      pendingPostAuthActionRef.current = () => handleRefreshLiveSheetProof();
       setShowGoogleConnectModal(true);
       return;
     }
@@ -406,7 +462,16 @@ export default function App() {
       showToast(`Sheet proof refreshed! ${proof.matchedCount} verified class student submissions.`, 'success');
     } catch (e: any) {
       console.error('Refresh proof error:', e);
-      showToast(e.message || 'Failed to refresh sheet proof.', 'error');
+      if (isAuthExpiredError(e)) {
+        handleTokenExpiry();
+        setAccessToken(null);
+        pendingPostAuthActionRef.current = () => handleRefreshLiveSheetProof();
+        setGoogleConnectError('Google authorization expired. Click below to re-authenticate and refresh live sheet proof.');
+        setShowGoogleConnectModal(true);
+        showToast('Google authorization expired. Please re-authenticate.', 'error');
+      } else {
+        showToast(e.message || 'Failed to refresh sheet proof.', 'error');
+      }
     } finally {
       setIsRefreshingProof(false);
     }
@@ -527,6 +592,102 @@ export default function App() {
     );
   };
 
+  // Toggle Drive Uploaded Status manually (Admin Override)
+  const handleToggleDriveUploaded = (rollNo: string, current: boolean) => {
+    const nextVal = !current;
+    saveDriveStatusOverride(rollNo, nextVal);
+
+    setStudentStatuses((prev) =>
+      prev.map((s) => {
+        if (s.rollNo === rollNo) {
+          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
+          if (nextVal && s.sheetUpdated && s.submitted) {
+            nextOverall = 'COMPLETED';
+          } else if (!nextVal && !s.sheetUpdated && !s.submitted) {
+            nextOverall = 'NOT STARTED';
+          }
+          return {
+            ...s,
+            driveUploaded: nextVal,
+            overallStatus: nextOverall,
+          };
+        }
+        return s;
+      })
+    );
+
+    if (selectedStudentForDetail && selectedStudentForDetail.rollNo === rollNo) {
+      let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
+      if (nextVal && selectedStudentForDetail.sheetUpdated && selectedStudentForDetail.submitted) {
+        nextOverall = 'COMPLETED';
+      } else if (!nextVal && !selectedStudentForDetail.sheetUpdated && !selectedStudentForDetail.submitted) {
+        nextOverall = 'NOT STARTED';
+      }
+      setSelectedStudentForDetail({
+        ...selectedStudentForDetail,
+        driveUploaded: nextVal,
+        overallStatus: nextOverall,
+      });
+    }
+
+    addAuditLog(
+      'Drive status changed (Admin)',
+      currentUser?.email || 'admin',
+      `Manually marked ${rollNo} Drive Uploaded as ${nextVal ? 'TRUE' : 'FALSE'}`,
+      'STATUS'
+    );
+
+    showToast(`Updated Drive status for ${rollNo} to ${nextVal ? 'TRUE' : 'FALSE'}.`, 'success');
+  };
+
+  // Toggle Sheet Updated Status manually (Admin Override)
+  const handleToggleSheetUpdated = (rollNo: string, current: boolean) => {
+    const nextVal = !current;
+    saveSheetStatusOverride(rollNo, nextVal);
+
+    setStudentStatuses((prev) =>
+      prev.map((s) => {
+        if (s.rollNo === rollNo) {
+          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
+          if (s.driveUploaded && nextVal && s.submitted) {
+            nextOverall = 'COMPLETED';
+          } else if (!s.driveUploaded && !nextVal && !s.submitted) {
+            nextOverall = 'NOT STARTED';
+          }
+          return {
+            ...s,
+            sheetUpdated: nextVal,
+            overallStatus: nextOverall,
+          };
+        }
+        return s;
+      })
+    );
+
+    if (selectedStudentForDetail && selectedStudentForDetail.rollNo === rollNo) {
+      let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
+      if (selectedStudentForDetail.driveUploaded && nextVal && selectedStudentForDetail.submitted) {
+        nextOverall = 'COMPLETED';
+      } else if (!selectedStudentForDetail.driveUploaded && !nextVal && !selectedStudentForDetail.submitted) {
+        nextOverall = 'NOT STARTED';
+      }
+      setSelectedStudentForDetail({
+        ...selectedStudentForDetail,
+        sheetUpdated: nextVal,
+        overallStatus: nextOverall,
+      });
+    }
+
+    addAuditLog(
+      'Sheet status changed (Admin)',
+      currentUser?.email || 'admin',
+      `Manually marked ${rollNo} Sheet Updated as ${nextVal ? 'TRUE' : 'FALSE'}`,
+      'STATUS'
+    );
+
+    showToast(`Updated Sheet status for ${rollNo} to ${nextVal ? 'TRUE' : 'FALSE'}.`, 'success');
+  };
+
   // Batch Toggle Submitted Status for Multiple Selected Students
   const handleBatchSetSubmitted = (rollNos: string[], submitted: boolean) => {
     if (rollNos.length === 0) return;
@@ -583,6 +744,134 @@ export default function App() {
       `Marked ${rollNos.length} student(s) as ${submitted ? 'Submitted' : 'Not Submitted'}.`,
       'success'
     );
+  };
+
+  // Batch Toggle Drive Uploaded Status for Multiple Selected Students
+  const handleBatchSetDriveUploaded = (rollNos: string[], driveUploaded: boolean) => {
+    if (rollNos.length === 0) return;
+
+    const updates: Record<string, boolean> = {};
+    const rollSet = new Set(rollNos.map((r) => r.toUpperCase().trim()));
+    rollNos.forEach((r) => {
+      updates[r] = driveUploaded;
+    });
+    setBatchDriveStatusOverride(updates);
+
+    setStudentStatuses((prev) =>
+      prev.map((s) => {
+        if (rollSet.has(s.rollNo.toUpperCase().trim())) {
+          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
+          if (driveUploaded && s.sheetUpdated && s.submitted) {
+            nextOverall = 'COMPLETED';
+          } else if (!driveUploaded && !s.sheetUpdated && !s.submitted) {
+            nextOverall = 'NOT STARTED';
+          }
+          return {
+            ...s,
+            driveUploaded,
+            overallStatus: nextOverall,
+          };
+        }
+        return s;
+      })
+    );
+
+    addAuditLog(
+      'Bulk Drive status changed (Admin)',
+      currentUser?.email || 'admin',
+      `Marked ${rollNos.length} student(s) Drive Uploaded as ${driveUploaded ? 'TRUE' : 'FALSE'}`,
+      'STATUS'
+    );
+
+    showToast(
+      `Marked ${rollNos.length} student(s) Drive status as ${driveUploaded ? 'TRUE' : 'FALSE'}.`,
+      'success'
+    );
+  };
+
+  // Batch Toggle Sheet Updated Status for Multiple Selected Students
+  const handleBatchSetSheetUpdated = (rollNos: string[], sheetUpdated: boolean) => {
+    if (rollNos.length === 0) return;
+
+    const updates: Record<string, boolean> = {};
+    const rollSet = new Set(rollNos.map((r) => r.toUpperCase().trim()));
+    rollNos.forEach((r) => {
+      updates[r] = sheetUpdated;
+    });
+    setBatchSheetStatusOverride(updates);
+
+    setStudentStatuses((prev) =>
+      prev.map((s) => {
+        if (rollSet.has(s.rollNo.toUpperCase().trim())) {
+          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
+          if (s.driveUploaded && sheetUpdated && s.submitted) {
+            nextOverall = 'COMPLETED';
+          } else if (!s.driveUploaded && !sheetUpdated && !s.submitted) {
+            nextOverall = 'NOT STARTED';
+          }
+          return {
+            ...s,
+            sheetUpdated,
+            overallStatus: nextOverall,
+          };
+        }
+        return s;
+      })
+    );
+
+    addAuditLog(
+      'Bulk Sheet status changed (Admin)',
+      currentUser?.email || 'admin',
+      `Marked ${rollNos.length} student(s) Sheet Updated as ${sheetUpdated ? 'TRUE' : 'FALSE'}`,
+      'STATUS'
+    );
+
+    showToast(
+      `Marked ${rollNos.length} student(s) Sheet status as ${sheetUpdated ? 'TRUE' : 'FALSE'}.`,
+      'success'
+    );
+  };
+
+  // Multi-Part Separate CSV Export Handlers
+  const handleExportClassSummaryCsv = () => {
+    exportClassSummaryCsv(studentStatuses);
+    addAuditLog('Export CSV', currentUser?.email || 'admin', 'Exported 67-Student Class Summary CSV', 'STATUS');
+    showToast('Class Summary CSV exported (67 students).', 'success');
+  };
+
+  const handleExportIndividualCertsCsv = () => {
+    exportIndividualCertificatesCsv(studentStatuses);
+    addAuditLog('Export CSV', currentUser?.email || 'admin', 'Exported Individual Certificates Tracked CSV', 'STATUS');
+    showToast('Individual Certificates Breakdown CSV exported.', 'success');
+  };
+
+  const handleExportOutsideClassCsv = () => {
+    exportOutsideClassCsv(outsideClassFiles, sheetSyncProof);
+    addAuditLog('Export CSV', currentUser?.email || 'admin', 'Exported Outside Class Submissions CSV', 'STATUS');
+    showToast('Outside Class Submissions CSV exported.', 'success');
+  };
+
+  const handleExportReviewQueueCsv = () => {
+    exportManualReviewQueueCsv(unidentifiedFiles, ambiguousCertFiles, duplicateFiles);
+    addAuditLog('Export CSV', currentUser?.email || 'admin', 'Exported Manual Review Queue CSV', 'STATUS');
+    showToast('Manual Review Queue CSV exported.', 'success');
+  };
+
+  const handleExportAuditLogsCsv = () => {
+    exportAuditLogsCsv(auditLogs);
+    addAuditLog('Export CSV', currentUser?.email || 'admin', 'Exported Audit Trail Logs CSV', 'STATUS');
+    showToast('Audit Trail Logs CSV exported.', 'success');
+  };
+
+  const handleExportAllCsvs = () => {
+    exportClassSummaryCsv(studentStatuses);
+    setTimeout(() => exportIndividualCertificatesCsv(studentStatuses), 300);
+    setTimeout(() => exportOutsideClassCsv(outsideClassFiles, sheetSyncProof), 600);
+    setTimeout(() => exportManualReviewQueueCsv(unidentifiedFiles, ambiguousCertFiles, duplicateFiles), 900);
+    setTimeout(() => exportAuditLogsCsv(auditLogs), 1200);
+
+    addAuditLog('Export All CSVs', currentUser?.email || 'admin', 'Exported all 5 separate CSV files', 'STATUS');
+    showToast('Downloading all 5 separate CSV exports...', 'success');
   };
 
   // Re-run sync engine after manual reviews resolution
@@ -859,12 +1148,28 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
             {/* Student Table */}
             <StudentTable
               students={studentStatuses}
+              lastScannedTimestamp={
+                lastSyncReport?.timestamp ||
+                driveConfig?.lastSynced ||
+                sheetConfig?.lastSynced ||
+                sheetSyncProof?.timestamp ||
+                null
+              }
               onToggleSubmitted={handleToggleSubmitted}
+              onToggleDriveUploaded={handleToggleDriveUploaded}
+              onToggleSheetUpdated={handleToggleSheetUpdated}
               onBatchSetSubmitted={handleBatchSetSubmitted}
+              onBatchSetDriveUploaded={handleBatchSetDriveUploaded}
+              onBatchSetSheetUpdated={handleBatchSetSheetUpdated}
               onOpenDetails={(s) => setSelectedStudentForDetail(s)}
               activeFilter={activeFilter}
               setActiveFilter={setActiveFilter}
-              onExportCsv={handleExportCsv}
+              onExportClassSummaryCsv={handleExportClassSummaryCsv}
+              onExportIndividualCertsCsv={handleExportIndividualCertsCsv}
+              onExportOutsideClassCsv={handleExportOutsideClassCsv}
+              onExportReviewQueueCsv={handleExportReviewQueueCsv}
+              onExportAuditLogsCsv={handleExportAuditLogsCsv}
+              onExportAllCsvs={handleExportAllCsvs}
               onExportSummaryReport={handleExportSummaryReport}
             />
           </div>
@@ -939,6 +1244,8 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
           student={selectedStudentForDetail}
           onClose={() => setSelectedStudentForDetail(null)}
           onToggleSubmitted={handleToggleSubmitted}
+          onToggleDriveUploaded={handleToggleDriveUploaded}
+          onToggleSheetUpdated={handleToggleSheetUpdated}
         />
       )}
 

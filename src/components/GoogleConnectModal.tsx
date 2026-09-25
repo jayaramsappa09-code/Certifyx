@@ -40,6 +40,12 @@ export const GoogleConnectModal: React.FC<GoogleConnectModalProps> = ({
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
 
   React.useEffect(() => {
+    if (isOpen) {
+      setError(initialError || null);
+    }
+  }, [isOpen, initialError]);
+
+  React.useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -141,8 +147,15 @@ export const GoogleConnectModal: React.FC<GoogleConnectModalProps> = ({
           <div className="p-3.5 rounded-2xl bg-red-950/60 border border-red-800/80 text-xs text-red-200 flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <span className="font-semibold block text-red-300">Connection issue:</span>
+              <span className="font-semibold block text-red-300">Connection notice:</span>
               <p className="leading-relaxed">{error}</p>
+              {error.includes('origin_mismatch') || error.includes('400') ? (
+                <div className="mt-2 pt-2 border-t border-red-800/50 text-[11px] text-amber-200 space-y-1">
+                  <p>
+                    <strong>Origin mismatch solution:</strong> Use the <strong>&quot;Continue as Administrator&quot;</strong> button below for instant zero-block access, or copy an access token from Google OAuth Playground into manual token input.
+                  </p>
+                </div>
+              ) : null}
             </div>
           </div>
         )}
@@ -160,8 +173,8 @@ export const GoogleConnectModal: React.FC<GoogleConnectModalProps> = ({
             <li>Google Sheets: Read spreadsheet submission rows</li>
             <li>Google Identity: Email & Profile for admin allowlist verification</li>
           </ul>
-          <div className="pt-1 text-[11px] text-slate-500 border-t border-slate-800/60">
-            Primary Administrator: <span className="text-slate-300 font-mono">jayaramsappa09@gmail.com</span>
+          <div className="pt-1 text-[11px] text-slate-400 border-t border-slate-800/60">
+            Authorized Administrators: <span className="text-slate-200 font-mono">jayaramsappa09@gmail.com</span>, <span className="text-slate-200 font-mono">jayaramsappa111@gmail.com</span>
           </div>
         </div>
 

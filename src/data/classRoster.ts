@@ -112,25 +112,61 @@ export function getStudentByRollNumber(rollNo: string): Student | undefined {
 }
 
 /**
- * Extracts a candidate roll number from a filename or text string
- * Examples:
- * 25A31A05EN_Hackathon.pdf -> 25A31A05EN
- * 25a31a05ey_Hackathon.pdf -> 25A31A05EY
- * 24A31A05JR_certificate.pdf -> 24A31A05JR (outside class)
+ * Extracts a candidate roll number from a filename, cell, folder name, or text string.
+ * Supports:
+ * - Direct 10-char roll numbers (e.g., 25A31A05DV, 25A31A05GB, 24A31A05JR)
+ * - Separated roll numbers (25_A31A_05_GB, 25-a31a-05-en)
+ * - Suffix patterns (05GB, 5GB, 05DV, 05EN)
+ * - Full student names & distinctive name matching (e.g., "Sappa Jayaram", "Koppanathi Babi", "Hema Venkata Lalitha")
  */
 export function extractRollNumberFromText(text: string): string | null {
   if (!text) return null;
-  // Match standard university roll number format like 25A31A05EN, 24A31A05JR, etc.
-  // Standard format: 2 digits + 1 letter + 2 digits + 1 letter + 2 digits + 2 alphanumeric chars
-  const match = text.match(/\b([0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2})\b/i);
-  if (match && match[1]) {
-    return normalizeRollNumber(match[1]);
+  const clean = text.toString().trim();
+
+  // 1. Direct standard university format (e.g., 25A31A05DV, 25A31A05GB, 24A31A05JR)
+  const standardMatch = clean.match(/([0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2})/i);
+  if (standardMatch && standardMatch[1]) {
+    const normalized = normalizeRollNumber(standardMatch[1]);
+    return normalized;
   }
-  // Alternate: loose match if separated by underscores/hyphens
-  const looseMatch = text.match(/(2[0-9][a-z0-9]{8})/i);
+
+  // 2. Format with separators, e.g. 25-A31A-05-EN or 25_A31A_05_EN or 25 A31A 05 EN
+  const separatedMatch = clean.match(/([0-9]{2}[\s\-_.]?[A-Za-z][\s\-_.]?[0-9]{2}[\s\-_.]?[A-Za-z][\s\-_.]?[0-9]{2}[\s\-_.]?[A-Za-z0-9]{2})/i);
+  if (separatedMatch && separatedMatch[1]) {
+    const normalized = normalizeRollNumber(separatedMatch[1]);
+    return normalized;
+  }
+
+  // 3. Match by student full names in class roster
+  const cleanLower = clean.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  for (const student of FIXED_CLASS_ROSTER) {
+    const studentNameLower = student.name.toLowerCase();
+    // If the clean string contains the full student name
+    if (cleanLower.includes(studentNameLower)) {
+      return student.rollNo;
+    }
+    // Or if all major words (length >= 4) in student name are present in text
+    const nameParts = studentNameLower.split(/\s+/).filter((p) => p.length >= 4);
+    if (nameParts.length >= 2 && nameParts.every((p) => cleanLower.includes(p))) {
+      return student.rollNo;
+    }
+  }
+
+  // 4. Match by roll number suffix (e.g. 05DV, 05GB, 05EN)
+  for (const student of FIXED_CLASS_ROSTER) {
+    const suffix = student.rollNo.substring(6); // e.g., "05DV", "05GB", "05EN"
+    const suffixRegex = new RegExp(`(?:^|[\\s_\\-\\(])${suffix}(?:[\\s_\\-\\.\\)]|$)`, 'i');
+    if (suffixRegex.test(clean)) {
+      return student.rollNo;
+    }
+  }
+
+  // 5. Loose 10-char alphanumeric string starting with 2
+  const looseMatch = clean.match(/(2[0-9][a-z0-9]{8})/i);
   if (looseMatch && looseMatch[1]) {
     return normalizeRollNumber(looseMatch[1]);
   }
+
   return null;
 }
 

@@ -37,9 +37,9 @@ export const SyncHistoryTab: React.FC<SyncHistoryTabProps> = ({
             No synchronization history recorded yet. Click "SYNC NOW" to execute your first sync.
           </div>
         ) : (
-          history.map((report) => (
+          history.map((report, idx) => (
             <div
-              key={report.id}
+              key={report.id ? `${report.id}_${idx}` : `report_${idx}`}
               className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 transition shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4"
             >
               <div className="space-y-1.5">

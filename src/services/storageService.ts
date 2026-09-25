@@ -12,6 +12,8 @@ import { DEFAULT_ADMIN_EMAILS } from './firebaseAuth';
 
 const STORAGE_KEYS = {
   SUBMITTED_STATUS: 'ccam_submitted_status_map',
+  DRIVE_STATUS_OVERRIDES: 'ccam_drive_status_override_map',
+  SHEET_STATUS_OVERRIDES: 'ccam_sheet_status_override_map',
   DRIVE_CONFIG: 'ccam_drive_folder_config',
   SHEET_CONFIG: 'ccam_google_sheet_config',
   SETTINGS: 'ccam_app_settings',
@@ -54,6 +56,74 @@ export function setBatchSubmittedStatus(updates: Record<string, boolean>): void 
     localStorage.setItem(STORAGE_KEYS.SUBMITTED_STATUS, JSON.stringify(map));
   } catch (e) {
     console.error('Failed to save batch submitted status:', e);
+  }
+}
+
+// 1b. Drive Uploaded Status Overrides (Map: normalized rollNo -> boolean)
+export function getDriveStatusOverrideMap(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DRIVE_STATUS_OVERRIDES);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to read drive override map:', e);
+    return {};
+  }
+}
+
+export function saveDriveStatusOverride(rollNo: string, overrideVal: boolean): void {
+  try {
+    const map = getDriveStatusOverrideMap();
+    map[rollNo.toUpperCase().trim()] = overrideVal;
+    localStorage.setItem(STORAGE_KEYS.DRIVE_STATUS_OVERRIDES, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to save drive override:', e);
+  }
+}
+
+export function setBatchDriveStatusOverride(updates: Record<string, boolean>): void {
+  try {
+    const map = getDriveStatusOverrideMap();
+    for (const [r, s] of Object.entries(updates)) {
+      map[r.toUpperCase().trim()] = s;
+    }
+    localStorage.setItem(STORAGE_KEYS.DRIVE_STATUS_OVERRIDES, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to save batch drive override:', e);
+  }
+}
+
+// 1c. Sheet Updated Status Overrides (Map: normalized rollNo -> boolean)
+export function getSheetStatusOverrideMap(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SHEET_STATUS_OVERRIDES);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to read sheet override map:', e);
+    return {};
+  }
+}
+
+export function saveSheetStatusOverride(rollNo: string, overrideVal: boolean): void {
+  try {
+    const map = getSheetStatusOverrideMap();
+    map[rollNo.toUpperCase().trim()] = overrideVal;
+    localStorage.setItem(STORAGE_KEYS.SHEET_STATUS_OVERRIDES, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to save sheet override:', e);
+  }
+}
+
+export function setBatchSheetStatusOverride(updates: Record<string, boolean>): void {
+  try {
+    const map = getSheetStatusOverrideMap();
+    for (const [r, s] of Object.entries(updates)) {
+      map[r.toUpperCase().trim()] = s;
+    }
+    localStorage.setItem(STORAGE_KEYS.SHEET_STATUS_OVERRIDES, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to save batch sheet override:', e);
   }
 }
 
@@ -107,6 +177,10 @@ export function getAppSettings(): AppSettings {
     autoSyncIntervalMinutes: 0,
     enableSpreadsheetWrite: false,
     adminEmails: DEFAULT_ADMIN_EMAILS,
+    customFilenameRegex: '([0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2})',
+    enableFuzzyNameMatching: true,
+    enableParentFolderInheritance: true,
+    enableSheetLinkMatching: true,
   };
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
@@ -133,7 +207,18 @@ export function saveAppSettings(settings: Partial<AppSettings>): AppSettings {
 export function getSyncHistory(): SyncReport[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SYNC_HISTORY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const list: SyncReport[] = JSON.parse(raw);
+    // Guarantee uniqueness by report ID
+    const seen = new Set<string>();
+    const unique: SyncReport[] = [];
+    for (const item of list) {
+      if (item && item.id && !seen.has(item.id)) {
+        seen.add(item.id);
+        unique.push(item);
+      }
+    }
+    return unique;
   } catch {
     return [];
   }
@@ -142,9 +227,11 @@ export function getSyncHistory(): SyncReport[] {
 export function addSyncReport(report: SyncReport): void {
   try {
     const history = getSyncHistory();
-    history.unshift(report);
+    // Prevent duplicate entries of the same report id
+    const filtered = history.filter((r) => r.id !== report.id);
+    filtered.unshift(report);
     // Keep last 50 reports
-    const trimmed = history.slice(0, 50);
+    const trimmed = filtered.slice(0, 50);
     localStorage.setItem(STORAGE_KEYS.SYNC_HISTORY, JSON.stringify(trimmed));
   } catch (e) {
     console.error('Failed to save sync report:', e);
@@ -155,7 +242,17 @@ export function addSyncReport(report: SyncReport): void {
 export function getAuditLogs(): AuditLogEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const list: AuditLogEntry[] = JSON.parse(raw);
+    const seen = new Set<string>();
+    const unique: AuditLogEntry[] = [];
+    for (const item of list) {
+      if (item && item.id && !seen.has(item.id)) {
+        seen.add(item.id);
+        unique.push(item);
+      }
+    }
+    return unique;
   } catch {
     return [];
   }

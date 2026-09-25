@@ -62,6 +62,7 @@ function notifyAuthListeners() {
 // Default Admin allowlist containing the user
 export const DEFAULT_ADMIN_EMAILS: string[] = [
   'jayaramsappa09@gmail.com',
+  'jayaramsappa111@gmail.com',
 ];
 
 /**
@@ -181,6 +182,7 @@ export async function checkUrlHashForOAuthToken(): Promise<{ user: AuthUser; acc
     try {
       sessionStorage.setItem('ccam_auth_user', JSON.stringify(user));
       sessionStorage.setItem('ccam_auth_token', token);
+      sessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
     } catch {}
 
     notifyAuthListeners();
@@ -315,6 +317,7 @@ export async function googleSignIn(): Promise<{ user: AuthUser; accessToken: str
                 try {
                   sessionStorage.setItem('ccam_auth_user', JSON.stringify(user));
                   sessionStorage.setItem('ccam_auth_token', accessToken);
+                  sessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
                 } catch {}
 
                 // Optionally sync with Firebase Auth if possible (ignore errors if restricted domain)
@@ -413,6 +416,50 @@ export function signInWithGoogleRedirect(): void {
 }
 
 /**
+ * Check if the current OAuth token is missing or likely expired (> 55 minutes old)
+ */
+export function isTokenExpired(): boolean {
+  if (!cachedAccessToken) return true;
+  try {
+    const savedAt = sessionStorage.getItem('ccam_auth_token_saved_at');
+    if (!savedAt) return false;
+    const elapsed = Date.now() - Number(savedAt);
+    return elapsed > 55 * 60 * 1000; // 55 mins in ms
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks if an error is due to Google OAuth 2.0 expiration or 401 unauthorized
+ */
+export function isAuthExpiredError(error: any): boolean {
+  if (!error) return false;
+  const msg = typeof error === 'string' ? error : error?.message || '';
+  return (
+    error?.status === 401 ||
+    msg.includes('401') ||
+    msg.toLowerCase().includes('authorization expired') ||
+    msg.toLowerCase().includes('re-authenticate') ||
+    msg.toLowerCase().includes('invalid credentials') ||
+    msg.toLowerCase().includes('unauthenticated') ||
+    msg.toLowerCase().includes('invalid_token')
+  );
+}
+
+/**
+ * Handle token expiration by clearing expired token and notifying listeners
+ */
+export function handleTokenExpiry(): void {
+  cachedAccessToken = null;
+  try {
+    sessionStorage.removeItem('ccam_auth_token');
+    sessionStorage.removeItem('ccam_auth_token_saved_at');
+  } catch {}
+  notifyAuthListeners();
+}
+
+/**
  * Connect with a direct Google OAuth Access Token
  * Useful when running in heavily restricted iframes or when token is generated from Google OAuth Playground
  */
@@ -431,6 +478,7 @@ export async function signInWithDirectToken(
   try {
     sessionStorage.setItem('ccam_auth_user', JSON.stringify(user));
     sessionStorage.setItem('ccam_auth_token', trimmed);
+    sessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
   } catch {}
 
   notifyAuthListeners();
@@ -487,10 +535,12 @@ export function setAccessToken(token: string | null) {
   if (token) {
     try {
       sessionStorage.setItem('ccam_auth_token', token);
+      sessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
     } catch {}
   } else {
     try {
       sessionStorage.removeItem('ccam_auth_token');
+      sessionStorage.removeItem('ccam_auth_token_saved_at');
     } catch {}
   }
 }

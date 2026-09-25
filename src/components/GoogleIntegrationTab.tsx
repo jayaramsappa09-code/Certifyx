@@ -23,6 +23,7 @@ import {
   ColumnMapping,
   AppSettings,
 } from '../types';
+import { isAuthExpiredError } from '../services/firebaseAuth';
 import { extractDriveFolderId, listDriveFolders, getDriveFolderMetadata, DriveFolderInfo } from '../services/googleDriveService';
 import {
   extractSpreadsheetId,
@@ -31,7 +32,10 @@ import {
   readSpreadsheetValues,
   SpreadsheetListItem,
 } from '../services/googleSheetsService';
+import { parseFilenameWithCustomRegex, detectCertificateType } from '../services/syncEngine';
+import { ROSTER_MAP, isValidClassRollNumber, normalizeRollNumber } from '../data/classRoster';
 import { addAuditLog } from '../services/storageService';
+import { Code, Sparkles, Wand2, Terminal, Info } from 'lucide-react';
 
 interface GoogleIntegrationTabProps {
   accessToken: string | null;
@@ -98,6 +102,94 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
 
   // New admin email input
   const [newAdminEmail, setNewAdminEmail] = useState('');
+
+  // Configurable Regex & Advanced Checking State
+  const [customRegexInput, setCustomRegexInput] = useState(
+    settings.customFilenameRegex || '([0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2})'
+  );
+  const [regexSaveStatus, setRegexSaveStatus] = useState<string | null>(null);
+  const [testFilename, setTestFilename] = useState('25A31A05GB_SAPPA_JAYARAM_QUANTATHON_AWARD.pdf');
+
+  // Regex presets
+  const REGEX_PRESETS = [
+    {
+      name: 'Standard 10-Char Roll',
+      desc: 'Matches any standard university roll number (e.g. 25A31A05GB)',
+      pattern: '([0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2})',
+    },
+    {
+      name: 'Full Named Groups (Roll + Name + Title)',
+      desc: 'Extracts Roll, Student Name, and Event Title into separate metadata',
+      pattern: '(?<rollNo>[0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2})[_-]?(?<studentName>[A-Za-z\\s]+)?[_-]?(?<certTitle>[A-Za-z0-9\\s]+)?',
+    },
+    {
+      name: 'Separated Delimiters (Hyphen/Underscore)',
+      desc: 'Matches 25_A31A_05_GB, 25-A31A-05-GB, or spaced formats',
+      pattern: '([0-9]{2}[-_\\s]?[A-Za-z][-_\\s]?[0-9]{2}[-_\\s]?[A-Za-z][-_\\s]?[0-9]{2}[-_\\s]?[A-Za-z0-9]{2})',
+    },
+    {
+      name: 'Roll Suffix (e.g. 05GB, 05EN, 05DV)',
+      desc: 'Matches short suffix tokens for the class section',
+      pattern: '(?:^|[\\s_\\-\\(])(05[A-Za-z0-9]{2})(?:[\\s_\\-\\.\\)]|$)',
+    },
+  ];
+
+  // Live test parsing result
+  const liveTestResult = React.useMemo(() => {
+    if (!testFilename.trim() || !customRegexInput.trim()) return null;
+    try {
+      const parsed = parseFilenameWithCustomRegex(testFilename.trim(), customRegexInput.trim());
+      const certType = detectCertificateType(testFilename.trim(), settings.customCertTypePatterns);
+      let matchedStudent = null;
+      if (parsed?.rollNo) {
+        const norm = normalizeRollNumber(parsed.rollNo);
+        matchedStudent = ROSTER_MAP.get(norm);
+      }
+      return {
+        parsed,
+        certType: certType.type,
+        matchedStudent,
+        isValidRegex: true,
+      };
+    } catch (e: any) {
+      return {
+        parsed: null,
+        certType: 'Invalid Regex',
+        matchedStudent: null,
+        isValidRegex: false,
+        error: e.message,
+      };
+    }
+  }, [testFilename, customRegexInput, settings.customCertTypePatterns]);
+
+  const handleSaveRegex = () => {
+    try {
+      // Validate regex syntax
+      new RegExp(customRegexInput.trim(), 'i');
+      onUpdateSettings({ customFilenameRegex: customRegexInput.trim() });
+      addAuditLog(
+        'Custom Regex Updated',
+        userEmail,
+        `Updated filename regex pattern to: ${customRegexInput.trim()}`,
+        'SETTINGS'
+      );
+      setRegexSaveStatus('Custom Regex pattern saved successfully.');
+      setTimeout(() => setRegexSaveStatus(null), 3000);
+    } catch (err: any) {
+      setRegexSaveStatus(`Invalid regular expression syntax: ${err.message}`);
+    }
+  };
+
+  const handleApplyPreset = (pattern: string) => {
+    setCustomRegexInput(pattern);
+    try {
+      new RegExp(pattern, 'i');
+      onUpdateSettings({ customFilenameRegex: pattern });
+      addAuditLog('Applied Regex Preset', userEmail, `Applied pattern: ${pattern}`, 'SETTINGS');
+      setRegexSaveStatus('Applied and saved preset pattern.');
+      setTimeout(() => setRegexSaveStatus(null), 3000);
+    } catch {}
+  };
 
   // 1. Handle Drive Folder Selection / URL paste
   const handleConnectFolder = async (folderIdOrUrl?: string) => {
@@ -436,9 +528,19 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
             </div>
 
             {folderError && (
-              <div className="p-3 rounded-xl bg-red-950/70 border border-red-800 text-xs text-red-300 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span>{folderError}</span>
+              <div className="p-3 rounded-xl bg-red-950/70 border border-red-800 text-xs text-red-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>{folderError}</span>
+                </div>
+                {isAuthExpiredError(folderError) && (
+                  <button
+                    onClick={onConnectGoogle}
+                    className="px-3 py-1 bg-red-900/80 hover:bg-red-850 text-white font-medium rounded-lg text-xs shrink-0 cursor-pointer border border-red-700"
+                  >
+                    Re-authenticate Now
+                  </button>
+                )}
               </div>
             )}
 
@@ -729,9 +831,19 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
             </div>
 
             {sheetError && (
-              <div className="p-3 rounded-xl bg-red-950/70 border border-red-800 text-xs text-red-300 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span>{sheetError}</span>
+              <div className="p-3 rounded-xl bg-red-950/70 border border-red-800 text-xs text-red-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>{sheetError}</span>
+                </div>
+                {isAuthExpiredError(sheetError) && (
+                  <button
+                    onClick={onConnectGoogle}
+                    className="px-3 py-1 bg-red-900/80 hover:bg-red-850 text-white font-medium rounded-lg text-xs shrink-0 cursor-pointer border border-red-700"
+                  >
+                    Re-authenticate Now
+                  </button>
+                )}
               </div>
             )}
 
@@ -779,7 +891,266 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
         )}
       </div>
 
-      {/* 4. Synchronization & Security Preferences */}
+      {/* 4. Configurable Regex Pattern & Advanced Analysis Sandbox */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+              <Code className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">Configurable Filename Regex &amp; Parsing</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800">
+                  Custom Pattern Engine
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Define custom regular expressions to extract student roll numbers, names, and certificate titles from Drive files.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleSaveRegex}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-lg shadow-purple-600/20 cursor-pointer"
+          >
+            <Check className="w-4 h-4" />
+            <span>Save Regex Pattern</span>
+          </button>
+        </div>
+
+        {regexSaveStatus && (
+          <div
+            className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+              regexSaveStatus.includes('Invalid')
+                ? 'bg-red-950/70 border border-red-800 text-red-300'
+                : 'bg-emerald-950/70 border border-emerald-800 text-emerald-300'
+            }`}
+          >
+            {regexSaveStatus.includes('Invalid') ? (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            )}
+            <span>{regexSaveStatus}</span>
+          </div>
+        )}
+
+        {/* Regex Input & Presets */}
+        <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300 block">
+              Active Regular Expression Pattern:
+            </label>
+            <div className="relative font-mono text-xs">
+              <input
+                type="text"
+                value={customRegexInput}
+                onChange={(e) => setCustomRegexInput(e.target.value)}
+                placeholder="e.g. (?<rollNo>[0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2})"
+                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-purple-300 placeholder-slate-600 focus:outline-none focus:border-purple-500 font-mono"
+              />
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Named capture groups supported: <code className="text-purple-300 font-mono">(?&lt;rollNo&gt;...)</code>, <code className="text-purple-300 font-mono">(?&lt;studentName&gt;...)</code>, <code className="text-purple-300 font-mono">(?&lt;certTitle&gt;...)</code>, <code className="text-purple-300 font-mono">(?&lt;certType&gt;...)</code>
+            </p>
+          </div>
+
+          {/* Quick Presets */}
+          <div className="space-y-2 pt-1 border-t border-slate-800/80">
+            <span className="text-[11px] font-semibold text-slate-400 block">
+              Quick Regex Presets:
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {REGEX_PRESETS.map((preset) => (
+                <button
+                  key={preset.name}
+                  onClick={() => handleApplyPreset(preset.pattern)}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    customRegexInput === preset.pattern
+                      ? 'bg-purple-950/40 border-purple-600 text-purple-200'
+                      : 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white">{preset.name}</span>
+                    {customRegexInput === preset.pattern && (
+                      <span className="text-[10px] font-bold text-purple-400">ACTIVE</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">{preset.desc}</p>
+                  <code className="text-[10px] font-mono text-purple-300/80 mt-1 truncate block">
+                    {preset.pattern}
+                  </code>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Interactive Live Regex Sandbox / Tester */}
+          <div className="pt-2 border-t border-slate-800/80 space-y-3">
+            <div className="flex items-center gap-2">
+              <Wand2 className="w-4 h-4 text-purple-400" />
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                Live Pattern Sandbox &amp; Verification Tester
+              </h4>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-slate-400 block">
+                Type a sample filename from your Google Drive to preview real-time parsing:
+              </label>
+              <input
+                type="text"
+                value={testFilename}
+                onChange={(e) => setTestFilename(e.target.value)}
+                placeholder="Type sample filename..."
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 font-mono"
+              />
+            </div>
+
+            {liveTestResult && (
+              <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
+                <div className="text-[11px] font-semibold text-slate-400">
+                  Real-Time Extraction Output:
+                </div>
+                {liveTestResult.isValidRegex ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    {/* Extracted Roll No */}
+                    <div className="p-2 bg-slate-950 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-500 uppercase font-semibold block">
+                        Extracted Roll No
+                      </span>
+                      <span className="font-mono font-bold text-blue-400">
+                        {liveTestResult.parsed?.rollNo || 'None detected'}
+                      </span>
+                      {liveTestResult.matchedStudent ? (
+                        <span className="text-[10px] text-emerald-400 block mt-0.5 font-medium">
+                          ✓ Verified in 67 Roster
+                        </span>
+                      ) : liveTestResult.parsed?.rollNo ? (
+                        <span className="text-[10px] text-amber-400 block mt-0.5">
+                          ⚠ Outside 67 Roster
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* Extracted Student Name */}
+                    <div className="p-2 bg-slate-950 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-500 uppercase font-semibold block">
+                        Student Name
+                      </span>
+                      <span className="font-medium text-slate-200 truncate block">
+                        {liveTestResult.matchedStudent?.name ||
+                          liveTestResult.parsed?.studentName ||
+                          '—'}
+                      </span>
+                    </div>
+
+                    {/* Extracted Certificate Title */}
+                    <div className="p-2 bg-slate-950 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-500 uppercase font-semibold block">
+                        Certificate Event / Title
+                      </span>
+                      <span className="font-medium text-slate-200 truncate block">
+                        {liveTestResult.parsed?.certTitle || '—'}
+                      </span>
+                    </div>
+
+                    {/* Detected Category */}
+                    <div className="p-2 bg-slate-950 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-500 uppercase font-semibold block">
+                        Detected Category
+                      </span>
+                      <span className="font-medium text-emerald-300 truncate block">
+                        {liveTestResult.certType}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-red-400 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Regex syntax error: {liveTestResult.error}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Advanced Checking Engine Toggles */}
+        <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            Advanced Checking &amp; Fallback Rules
+          </h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+            {/* Fuzzy Name Matching */}
+            <label className="flex items-start gap-3 p-3 bg-slate-900 border border-slate-800 rounded-xl cursor-pointer hover:border-slate-700 transition">
+              <input
+                type="checkbox"
+                checked={settings.enableFuzzyNameMatching ?? true}
+                onChange={(e) =>
+                  onUpdateSettings({ enableFuzzyNameMatching: e.target.checked })
+                }
+                className="w-4 h-4 mt-0.5 rounded text-purple-600 bg-slate-950 border-slate-700 cursor-pointer"
+              />
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-white block">
+                  Student Name Matching
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  Matches student names from the 67 roster in filenames even if roll number is missing.
+                </p>
+              </div>
+            </label>
+
+            {/* Subfolder Name Inheritance */}
+            <label className="flex items-start gap-3 p-3 bg-slate-900 border border-slate-800 rounded-xl cursor-pointer hover:border-slate-700 transition">
+              <input
+                type="checkbox"
+                checked={settings.enableParentFolderInheritance ?? true}
+                onChange={(e) =>
+                  onUpdateSettings({ enableParentFolderInheritance: e.target.checked })
+                }
+                className="w-4 h-4 mt-0.5 rounded text-purple-600 bg-slate-950 border-slate-700 cursor-pointer"
+              />
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-white block">
+                  Subfolder Inheritance
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  Files inside subfolders named with roll numbers automatically inherit student identity.
+                </p>
+              </div>
+            </label>
+
+            {/* Sheet Link Matching */}
+            <label className="flex items-start gap-3 p-3 bg-slate-900 border border-slate-800 rounded-xl cursor-pointer hover:border-slate-700 transition">
+              <input
+                type="checkbox"
+                checked={settings.enableSheetLinkMatching ?? true}
+                onChange={(e) =>
+                  onUpdateSettings({ enableSheetLinkMatching: e.target.checked })
+                }
+                className="w-4 h-4 mt-0.5 rounded text-purple-600 bg-slate-950 border-slate-700 cursor-pointer"
+              />
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-white block">
+                  Sheet URL Cross-Reference
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  Directly links Google Drive files to students when referenced in Google Sheet response links.
+                </p>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* 5. Synchronization & Security Preferences */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
         <h3 className="text-base font-bold text-white flex items-center gap-2">
           <Settings className="w-5 h-5 text-indigo-400" />

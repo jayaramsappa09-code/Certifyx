@@ -19,9 +19,16 @@ export interface DriveCertificateFile {
   modifiedTime?: string;
   webViewLink?: string;
   webContentLink?: string;
+  thumbnailLink?: string;
+  iconLink?: string;
   size?: string;
+  parentFolderName?: string;
+  parentFolderId?: string;
   detectedRollNo?: string;
   detectedCertType?: string;
+  detectedCertTitle?: string;
+  detectedStudentName?: string;
+  matchMethod?: 'CUSTOM_REGEX' | 'STANDARD_REGEX' | 'STUDENT_NAME' | 'PARENT_FOLDER' | 'SHEET_URL_LINK' | 'MANUAL_OVERRIDE';
   isOutsideClass?: boolean;
   isUnidentified?: boolean;
   isDuplicate?: boolean;
@@ -139,4 +146,9 @@ export interface AppSettings {
   autoSyncIntervalMinutes: number; // 0 for off, 5, 15, 30, 60
   enableSpreadsheetWrite: boolean;
   adminEmails: string[];
+  customFilenameRegex?: string; // Custom regex pattern (e.g. (?<rollNo>[0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2}))
+  customCertTypePatterns?: Array<{ type: string; pattern: string }>;
+  enableFuzzyNameMatching?: boolean;
+  enableParentFolderInheritance?: boolean;
+  enableSheetLinkMatching?: boolean;
 }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search,
   Filter,
@@ -15,32 +15,118 @@ import {
   Check,
   X,
   ListChecks,
+  ChevronDown,
+  HardDrive,
+  Award,
+  Layers,
+  FileCheck,
+  Sparkles,
 } from 'lucide-react';
 import { StudentStatusRecord } from '../types';
 
 interface StudentTableProps {
   students: StudentStatusRecord[];
+  lastScannedTimestamp?: string | null;
   onToggleSubmitted: (rollNo: string, current: boolean) => void;
+  onToggleDriveUploaded: (rollNo: string, current: boolean) => void;
+  onToggleSheetUpdated: (rollNo: string, current: boolean) => void;
   onBatchSetSubmitted?: (rollNos: string[], submitted: boolean) => void;
+  onBatchSetDriveUploaded?: (rollNos: string[], driveUploaded: boolean) => void;
+  onBatchSetSheetUpdated?: (rollNos: string[], sheetUpdated: boolean) => void;
   onOpenDetails: (student: StudentStatusRecord) => void;
   activeFilter: string;
   setActiveFilter: (filter: string) => void;
-  onExportCsv: () => void;
+  onExportClassSummaryCsv: () => void;
+  onExportIndividualCertsCsv: () => void;
+  onExportOutsideClassCsv: () => void;
+  onExportReviewQueueCsv: () => void;
+  onExportAuditLogsCsv: () => void;
+  onExportAllCsvs: () => void;
   onExportSummaryReport: () => void;
+}
+
+/**
+ * Format timestamp into human-readable relative/absolute format
+ */
+export function formatScanTimestamp(timestamp?: string | null): {
+  formatted: string;
+  exact: string;
+} {
+  if (!timestamp) {
+    return { formatted: 'Never', exact: 'No synchronization run yet' };
+  }
+  try {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) {
+      return { formatted: 'Never', exact: 'Invalid timestamp' };
+    }
+    const now = Date.now();
+    const diffSec = Math.floor((now - date.getTime()) / 1000);
+    const exact = date.toLocaleString();
+
+    if (diffSec < 15) return { formatted: 'Just now', exact };
+    if (diffSec < 60) return { formatted: `${diffSec}s ago`, exact };
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return { formatted: `${diffMin}m ago`, exact };
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) {
+      return {
+        formatted: `${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        exact,
+      };
+    }
+    return {
+      formatted: date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      exact,
+    };
+  } catch {
+    return { formatted: 'Recent', exact: String(timestamp) };
+  }
 }
 
 export const StudentTable: React.FC<StudentTableProps> = ({
   students,
+  lastScannedTimestamp,
   onToggleSubmitted,
+  onToggleDriveUploaded,
+  onToggleSheetUpdated,
   onBatchSetSubmitted,
+  onBatchSetDriveUploaded,
+  onBatchSetSheetUpdated,
   onOpenDetails,
   activeFilter,
   setActiveFilter,
-  onExportCsv,
+  onExportClassSummaryCsv,
+  onExportIndividualCertsCsv,
+  onExportOutsideClassCsv,
+  onExportReviewQueueCsv,
+  onExportAuditLogsCsv,
+  onExportAllCsvs,
   onExportSummaryReport,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  const scannedTime = useMemo(
+    () => formatScanTimestamp(lastScannedTimestamp),
+    [lastScannedTimestamp]
+  );
+
+  // Close export dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        exportDropdownRef.current &&
+        !exportDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Filtering and Searching
   const filteredStudents = useMemo(() => {
@@ -53,7 +139,8 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         const matchRoll = s.rollNo.toLowerCase().includes(q);
         const matchName = s.name.toLowerCase().includes(q);
         const matchCerts = s.certificates.some((c) => c.toLowerCase().includes(q));
-        return matchRoll || matchName || matchCerts;
+        const matchDriveFiles = s.driveFiles.some((f) => f.name.toLowerCase().includes(q));
+        return matchRoll || matchName || matchCerts || matchDriveFiles;
       });
     }
 
@@ -85,6 +172,11 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         break;
       case 'SUBMISSION_PENDING':
         result = result.filter((s) => !s.submitted);
+        break;
+      case 'MULTIPLE_CERTS':
+        result = result.filter(
+          (s) => s.certificates.length > 1 || s.driveFiles.length > 1
+        );
         break;
       case 'CERT_FOUND':
         result = result.filter((s) => s.certificates.length > 0 || s.driveUploaded);
@@ -123,14 +215,12 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
   const handleToggleSelectAllFiltered = () => {
     if (isAllFilteredSelected) {
-      // Deselect all currently filtered students
       setSelectedRollNos((prev) => {
         const next = new Set(prev);
         filteredStudents.forEach((s) => next.delete(s.rollNo));
         return next;
       });
     } else {
-      // Select all currently filtered students
       setSelectedRollNos((prev) => {
         const next = new Set(prev);
         filteredStudents.forEach((s) => next.add(s.rollNo));
@@ -148,23 +238,43 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     setSelectedRollNos(new Set());
   };
 
-  // Perform Bulk Action
+  // Bulk Status Update Handlers
   const handleBulkSetSubmitted = (submitted: boolean) => {
     if (selectedRollNos.size === 0) return;
     const rollNos = Array.from(selectedRollNos);
     if (onBatchSetSubmitted) {
       onBatchSetSubmitted(rollNos, submitted);
     } else {
-      // Fallback: individually toggle
       rollNos.forEach((r) => onToggleSubmitted(r, !submitted));
+    }
+  };
+
+  const handleBulkSetDrive = (driveUploaded: boolean) => {
+    if (selectedRollNos.size === 0) return;
+    const rollNos = Array.from(selectedRollNos);
+    if (onBatchSetDriveUploaded) {
+      onBatchSetDriveUploaded(rollNos, driveUploaded);
+    } else {
+      rollNos.forEach((r) => onToggleDriveUploaded(r, !driveUploaded));
+    }
+  };
+
+  const handleBulkSetSheet = (sheetUpdated: boolean) => {
+    if (selectedRollNos.size === 0) return;
+    const rollNos = Array.from(selectedRollNos);
+    if (onBatchSetSheetUpdated) {
+      onBatchSetSheetUpdated(rollNos, sheetUpdated);
+    } else {
+      rollNos.forEach((r) => onToggleSheetUpdated(r, !sheetUpdated));
     }
   };
 
   const filterOptions = [
     { id: 'ALL', label: 'All (67)' },
-    { id: 'COMPLETED', label: 'Completed' },
-    { id: 'PENDING', label: 'Pending' },
+    { id: 'COMPLETED', label: 'Completed (All 3 Ticked)' },
+    { id: 'PENDING', label: 'Pending Steps' },
     { id: 'NOT_STARTED', label: 'Not Started' },
+    { id: 'MULTIPLE_CERTS', label: 'Multiple Certs (2+)' },
     { id: 'DRIVE_PENDING', label: 'Drive Pending' },
     { id: 'SHEET_PENDING', label: 'Sheet Pending' },
     { id: 'SUBMISSION_PENDING', label: 'Submission Pending' },
@@ -174,39 +284,139 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Controls Bar: Search, Filters, and Export */}
+      {/* Controls Bar: Search, Filters, and Multi-Part CSV Exports */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search Bar */}
-          <div className="relative flex-1 max-w-lg">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by Roll No (e.g. 25A31A05EN), Name, or Certificate..."
-              className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="Search by Roll No (e.g. 25A31A05GB), Student Name, or Certificate..."
+              className="w-full pl-10 pr-10 py-2.5 bg-slate-950 border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-slate-100 placeholder-slate-500 text-xs sm:text-sm rounded-xl outline-none transition"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 p-1 rounded-md"
               >
-                Clear
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          {/* Action Buttons: Export CSV & Report */}
+          {/* Action Buttons: Separate CSV Exports Dropdown & Report */}
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={onExportCsv}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition cursor-pointer"
-              title="Download CSV for all 67 students"
-            >
-              <Download className="w-4 h-4 text-emerald-400" />
-              <span>Export CSV</span>
-            </button>
+            {/* Separate CSV Export Dropdown */}
+            <div className="relative" ref={exportDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsExportMenuOpen((prev) => !prev)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-emerald-950/80 to-teal-950/80 hover:from-emerald-900/90 hover:to-teal-900/90 border border-emerald-500/40 text-emerald-200 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer shadow-md shadow-emerald-950/40"
+                title="Export separate CSV files for each part"
+              >
+                <Download className="w-4 h-4 text-emerald-400" />
+                <span>Export CSVs</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Dropdown Menu */}
+              {isExportMenuOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-30 space-y-1 animate-in fade-in slide-in-from-top-2">
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                    Separate CSV Exports
+                  </div>
+
+                  {/* Export All CSVs */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportAllCsvs();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-emerald-300 hover:bg-emerald-950/60 hover:text-emerald-200 flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      Export All 5 CSVs
+                    </span>
+                    <span className="text-[10px] bg-emerald-900/80 text-emerald-300 px-1.5 py-0.5 rounded font-mono">
+                      All Parts
+                    </span>
+                  </button>
+
+                  {/* 1. Class Summary CSV */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportClassSummaryCsv();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-200 hover:bg-slate-800 flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span>1. Class Summary (67 Students)</span>
+                    <span className="text-[10px] text-slate-500 font-mono">67 Rows</span>
+                  </button>
+
+                  {/* 2. Individual Certificates Tracked CSV */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportIndividualCertsCsv();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-200 hover:bg-slate-800 flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span>2. Individual Certificates Tracked</span>
+                    <span className="text-[10px] text-purple-400 font-mono">Per-Cert</span>
+                  </button>
+
+                  {/* 3. Outside Class Submissions CSV */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportOutsideClassCsv();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-200 hover:bg-slate-800 flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span>3. Outside Class Submissions</span>
+                    <span className="text-[10px] text-amber-400 font-mono">Other Rolls</span>
+                  </button>
+
+                  {/* 4. Manual Review Queue CSV */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportReviewQueueCsv();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-200 hover:bg-slate-800 flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span>4. Manual Review Queue</span>
+                    <span className="text-[10px] text-blue-400 font-mono">Unidentified</span>
+                  </button>
+
+                  {/* 5. Audit Trail Logs CSV */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onExportAuditLogsCsv();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-slate-200 hover:bg-slate-800 flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span>5. Audit Trail Logs</span>
+                    <span className="text-[10px] text-slate-400 font-mono">History</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Sync Report Text */}
             <button
               onClick={onExportSummaryReport}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition cursor-pointer"
@@ -241,89 +451,82 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           })}
         </div>
 
-        {/* Active Results Summary */}
-        <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/60">
-          <div>
-            Showing <span className="font-semibold text-white">{filteredStudents.length}</span> of 67 students
-            {searchQuery && (
-              <span className="ml-1 text-slate-500">
-                matching "{searchQuery}"
-              </span>
+        {/* Active Results Summary & Last Scanned Badge */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 pt-1 border-t border-slate-800/60">
+          <div className="flex items-center gap-2">
+            <span>
+              Showing <span className="font-semibold text-white">{filteredStudents.length}</span> of 67 students
+              {searchQuery && (
+                <span className="ml-1 text-slate-500">
+                  matching "{searchQuery}"
+                </span>
+              )}
+            </span>
+            {activeFilter !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setActiveFilter('ALL')}
+                className="text-blue-400 hover:underline cursor-pointer touch-manipulation text-[11px]"
+              >
+                Reset filter
+              </button>
             )}
           </div>
-          {activeFilter !== 'ALL' && (
-            <button
-              type="button"
-              onClick={() => setActiveFilter('ALL')}
-              className="text-blue-400 hover:underline cursor-pointer touch-manipulation"
-            >
-              Reset filter
-            </button>
-          )}
+
+          {/* Last Scanned Timestamp Badge in Summary Bar */}
+          <div
+            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-950 border border-slate-800 text-slate-300 shadow-sm"
+            title={`Exact Drive/Sheets Sync Time: ${scannedTime.exact}`}
+          >
+            <Clock className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-slate-400">Last Scanned:</span>
+            <span className="text-emerald-300 font-mono font-semibold">
+              {scannedTime.formatted}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Prominent Bulk Action Toolbar (When 1 or more students are selected) */}
       {selectedRollNos.size > 0 && (
-        <div className="bg-gradient-to-r from-purple-950/80 via-slate-900 to-indigo-950/80 border-2 border-purple-500/40 rounded-2xl p-3.5 shadow-2xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
-              <ListChecks className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white">
-                  {selectedRollNos.size} Student{selectedRollNos.size > 1 ? 's' : ''} Selected
-                </span>
-                <span className="text-xs text-purple-300 font-mono">
-                  ({Math.round((selectedRollNos.size / 67) * 100)}% of class)
-                </span>
+        <div className="bg-gradient-to-r from-purple-950/90 via-slate-900 to-indigo-950/90 border-2 border-purple-500/50 rounded-2xl p-4 shadow-2xl space-y-3 animate-in fade-in slide-in-from-top-1">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                <ListChecks className="w-5 h-5" />
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                <button
-                  type="button"
-                  onClick={handleToggleSelectAllFiltered}
-                  className="hover:text-purple-300 underline cursor-pointer touch-manipulation"
-                >
-                  {isAllFilteredSelected ? 'Deselect filtered' : `Select all ${filteredStudents.length} filtered`}
-                </button>
-                {selectedRollNos.size < 67 && (
-                  <>
-                    <span>•</span>
-                    <button
-                      type="button"
-                      onClick={handleSelectAll67}
-                      className="hover:text-purple-300 underline cursor-pointer touch-manipulation"
-                    >
-                      Select all 67 class students
-                    </button>
-                  </>
-                )}
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-white">
+                    {selectedRollNos.size} Student{selectedRollNos.size > 1 ? 's' : ''} Selected
+                  </span>
+                  <span className="text-xs text-purple-300 font-mono">
+                    ({Math.round((selectedRollNos.size / 67) * 100)}% of class)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAllFiltered}
+                    className="hover:text-purple-300 underline cursor-pointer touch-manipulation"
+                  >
+                    {isAllFilteredSelected ? 'Deselect filtered' : `Select all ${filteredStudents.length} filtered`}
+                  </button>
+                  {selectedRollNos.size < 67 && (
+                    <>
+                      <span>•</span>
+                      <button
+                        type="button"
+                        onClick={handleSelectAll67}
+                        className="hover:text-purple-300 underline cursor-pointer touch-manipulation"
+                      >
+                        Select all 67 class students
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-
-          {/* Bulk Action Buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => handleBulkSetSubmitted(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-lg shadow-purple-600/30 cursor-pointer touch-manipulation"
-              title="Mark all selected students as Submitted (TRUE)"
-            >
-              <CheckSquare className="w-4 h-4" />
-              <span>Mark as Submitted</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleBulkSetSubmitted(false)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition cursor-pointer touch-manipulation"
-              title="Mark all selected students as Not Submitted (FALSE)"
-            >
-              <Square className="w-4 h-4 text-slate-400" />
-              <span>Mark as Not Submitted</span>
-            </button>
 
             <button
               type="button"
@@ -334,11 +537,118 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               <X className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Admin Bulk Status Controls: Drive, Sheet, Submitted */}
+          <div className="pt-2 border-t border-purple-900/40 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-400 font-semibold text-[11px] uppercase mr-1">
+              Admin Manual Bulk Actions:
+            </span>
+
+            {/* Drive Uploaded Bulk */}
+            <div className="inline-flex rounded-xl overflow-hidden border border-emerald-700/50 shadow-sm">
+              <button
+                type="button"
+                onClick={() => handleBulkSetDrive(true)}
+                className="px-2.5 py-1.5 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 font-semibold flex items-center gap-1 cursor-pointer transition"
+                title="Mark selected Drive Uploaded = TRUE"
+              >
+                <HardDrive className="w-3.5 h-3.5" />
+                <span>Drive ✓</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkSetDrive(false)}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-l border-emerald-900/50 cursor-pointer transition"
+                title="Mark selected Drive Uploaded = FALSE"
+              >
+                <span>✗</span>
+              </button>
+            </div>
+
+            {/* Sheet Updated Bulk */}
+            <div className="inline-flex rounded-xl overflow-hidden border border-emerald-700/50 shadow-sm">
+              <button
+                type="button"
+                onClick={() => handleBulkSetSheet(true)}
+                className="px-2.5 py-1.5 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 font-semibold flex items-center gap-1 cursor-pointer transition"
+                title="Mark selected Sheet Updated = TRUE"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Sheet ✓</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkSetSheet(false)}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-l border-emerald-900/50 cursor-pointer transition"
+                title="Mark selected Sheet Updated = FALSE"
+              >
+                <span>✗</span>
+              </button>
+            </div>
+
+            {/* Submitted Bulk */}
+            <div className="inline-flex rounded-xl overflow-hidden border border-purple-700/60 shadow-sm">
+              <button
+                type="button"
+                onClick={() => handleBulkSetSubmitted(true)}
+                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold flex items-center gap-1.5 cursor-pointer transition shadow-md shadow-purple-900/40"
+                title="Mark selected Submitted = TRUE"
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                <span>Submitted ✓</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkSetSubmitted(false)}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-l border-purple-900/50 cursor-pointer transition"
+                title="Mark selected Submitted = FALSE"
+              >
+                <span>✗</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Desktop Table View */}
       <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        {/* Table Top Header Bar with Roster Title and Last Scanned Badge */}
+        <div className="px-4 py-3 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-white uppercase tracking-wider">
+              Class Section Roster
+            </span>
+            <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800">
+              67 Enrolled Students
+            </span>
+          </div>
+
+          {/* Last Scanned Timestamp Header Badge */}
+          <div
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-medium bg-slate-900/90 border border-slate-800 text-slate-300 shadow-sm"
+            title={`Last Drive/Sheets Sync: ${scannedTime.exact}`}
+          >
+            <span className="flex h-2 w-2 relative">
+              <span
+                className={`animate-ping absolute inline-flex h-full w-full rounded-full ${
+                  lastScannedTimestamp ? 'bg-emerald-400' : 'bg-slate-500'
+                } opacity-75`}
+              ></span>
+              <span
+                className={`relative inline-flex rounded-full h-2 w-2 ${
+                  lastScannedTimestamp ? 'bg-emerald-500' : 'bg-slate-600'
+                }`}
+              ></span>
+            </span>
+            <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+              Last Scanned:
+            </span>
+            <span className="text-emerald-300 font-mono font-semibold">
+              {scannedTime.formatted}
+            </span>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -366,10 +676,25 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 </th>
                 <th className="py-3.5 px-4 w-32">Roll No</th>
                 <th className="py-3.5 px-4">Student Name</th>
-                <th className="py-3.5 px-4">Certificates</th>
-                <th className="py-3.5 px-4 text-center w-20">Drive</th>
-                <th className="py-3.5 px-4 text-center w-20">Sheet</th>
-                <th className="py-3.5 px-4 text-center w-24">Submitted</th>
+                <th className="py-3.5 px-4">All Certificates Uploaded (Unified)</th>
+                <th className="py-3.5 px-4 text-center w-28">
+                  <span className="flex items-center justify-center gap-1">
+                    <HardDrive className="w-3.5 h-3.5 text-blue-400" />
+                    Drive (Admin)
+                  </span>
+                </th>
+                <th className="py-3.5 px-4 text-center w-28">
+                  <span className="flex items-center justify-center gap-1">
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                    Sheet (Admin)
+                  </span>
+                </th>
+                <th className="py-3.5 px-4 text-center w-28">
+                  <span className="flex items-center justify-center gap-1">
+                    <CheckSquare className="w-3.5 h-3.5 text-purple-400" />
+                    Submitted
+                  </span>
+                </th>
                 <th className="py-3.5 px-4 text-center w-32">Overall Status</th>
                 <th className="py-3.5 px-4 text-right w-24">Actions</th>
               </tr>
@@ -386,6 +711,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   const hasDriveFiles = student.driveFiles.length > 0;
                   const firstDriveFile = hasDriveFiles ? student.driveFiles[0] : null;
                   const isSelected = selectedRollNos.has(student.rollNo);
+                  const totalCerts = student.certificates.length || student.driveFiles.length;
 
                   return (
                     <tr
@@ -412,76 +738,127 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
                       {/* Roll No */}
                       <td className="py-3.5 px-4 font-mono font-semibold text-slate-200 tracking-wide text-xs sm:text-sm">
-                        {student.rollNo}
+                        <span className="px-2 py-0.5 rounded bg-blue-950/60 border border-blue-900/60 text-blue-300">
+                          {student.rollNo}
+                        </span>
                       </td>
 
                       {/* Name */}
                       <td className="py-3.5 px-4">
-                        <div className="font-medium text-slate-100">
+                        <div className="font-semibold text-slate-100">
                           {student.name}
                         </div>
                       </td>
 
-                      {/* Certificates */}
+                      {/* Unified All Certificates Column (Showing all certificates uploaded by this single student) */}
                       <td className="py-3.5 px-4">
-                        {student.certificates.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {student.certificates.map((cert, idx) => (
-                              <span
-                                key={idx}
-                                className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-950/70 text-blue-300 border border-blue-800/60"
-                              >
-                                {cert}
-                              </span>
-                            ))}
+                        {totalCerts > 0 ? (
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {student.certificates.map((cert, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-950/80 text-blue-300 border border-blue-800/70"
+                                >
+                                  <Award className="w-3 h-3 text-blue-400" />
+                                  {cert}
+                                </span>
+                              ))}
+                              {student.driveFiles.length > student.certificates.length && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-purple-950/80 text-purple-300 border border-purple-800/70">
+                                  <FileCheck className="w-3 h-3" />
+                                  {student.driveFiles.length} files in Drive
+                                </span>
+                              )}
+                            </div>
+                            {/* Fast individual certificate preview file chips */}
+                            {student.driveFiles.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1 text-[10px] text-slate-400 font-mono">
+                                {student.driveFiles.slice(0, 3).map((f, fIdx) => (
+                                  <a
+                                    key={f.id || fIdx}
+                                    href={f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="hover:text-blue-400 hover:underline bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 truncate max-w-[140px] inline-block"
+                                    title={`Open Drive File: ${f.name}`}
+                                  >
+                                    📄 {f.name}
+                                  </a>
+                                ))}
+                                {student.driveFiles.length > 3 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenDetails(student)}
+                                    className="text-blue-400 hover:underline cursor-pointer"
+                                  >
+                                    +{student.driveFiles.length - 3} more
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-500 italic">None</span>
+                          <span className="text-xs text-slate-500 italic">No certificates recorded</span>
                         )}
                       </td>
 
-                      {/* Drive Uploaded */}
+                      {/* Drive Uploaded (Interactive Admin Toggle) */}
                       <td className="py-3.5 px-4 text-center">
-                        {student.driveUploaded ? (
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-950/80 text-emerald-400 border border-emerald-800/70" title="Certificate found in Google Drive">
-                            <CheckCircle2 className="w-4 h-4" />
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-950 text-slate-600 border border-slate-800" title="Not uploaded to Google Drive">
-                            <XCircle className="w-4 h-4" />
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => onToggleDriveUploaded(student.rollNo, student.driveUploaded)}
+                          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition cursor-pointer touch-manipulation ${
+                            student.driveUploaded
+                              ? 'bg-emerald-950/90 text-emerald-400 border border-emerald-700/80 hover:bg-emerald-900/90 shadow-sm'
+                              : 'bg-slate-950 text-slate-600 border border-slate-800 hover:border-slate-600 hover:text-slate-400'
+                          }`}
+                          title={`Click to manually toggle Drive Uploaded for ${student.rollNo} (Currently: ${student.driveUploaded ? 'TRUE' : 'FALSE'})`}
+                        >
+                          {student.driveUploaded ? (
+                            <CheckSquare className="w-5 h-5 text-emerald-400" />
+                          ) : (
+                            <Square className="w-5 h-5 text-slate-500" />
+                          )}
+                        </button>
                       </td>
 
-                      {/* Spreadsheet Updated */}
+                      {/* Spreadsheet Updated (Interactive Admin Toggle) */}
                       <td className="py-3.5 px-4 text-center">
-                        {student.sheetUpdated ? (
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-950/80 text-emerald-400 border border-emerald-800/70" title="Matching record exists in Google Sheet">
-                            <CheckCircle2 className="w-4 h-4" />
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-950 text-slate-600 border border-slate-800" title="Not updated in Google Sheet">
-                            <XCircle className="w-4 h-4" />
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => onToggleSheetUpdated(student.rollNo, student.sheetUpdated)}
+                          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition cursor-pointer touch-manipulation ${
+                            student.sheetUpdated
+                              ? 'bg-emerald-950/90 text-emerald-400 border border-emerald-700/80 hover:bg-emerald-900/90 shadow-sm'
+                              : 'bg-slate-950 text-slate-600 border border-slate-800 hover:border-slate-600 hover:text-slate-400'
+                          }`}
+                          title={`Click to manually toggle Sheet Updated for ${student.rollNo} (Currently: ${student.sheetUpdated ? 'TRUE' : 'FALSE'})`}
+                        >
+                          {student.sheetUpdated ? (
+                            <CheckSquare className="w-5 h-5 text-emerald-400" />
+                          ) : (
+                            <Square className="w-5 h-5 text-slate-500" />
+                          )}
+                        </button>
                       </td>
 
-                      {/* Submitted (Interactive Admin Checkbox) */}
+                      {/* Submitted (Interactive Admin Toggle) */}
                       <td className="py-3.5 px-4 text-center">
                         <button
                           type="button"
                           onClick={() => onToggleSubmitted(student.rollNo, student.submitted)}
                           className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition cursor-pointer touch-manipulation ${
                             student.submitted
-                              ? 'bg-purple-950/80 text-purple-400 border border-purple-800 hover:bg-purple-900/80'
-                              : 'bg-slate-950 text-slate-500 border border-slate-800 hover:border-slate-600 hover:text-slate-300'
+                              ? 'bg-purple-950/90 text-purple-400 border border-purple-700/80 hover:bg-purple-900/90 shadow-sm'
+                              : 'bg-slate-950 text-slate-600 border border-slate-800 hover:border-slate-600 hover:text-slate-400'
                           }`}
-                          title={`Click to mark as ${student.submitted ? 'unsubmitted' : 'submitted'}`}
+                          title={`Click to manually toggle Submitted for ${student.rollNo} (Currently: ${student.submitted ? 'TRUE' : 'FALSE'})`}
                         >
                           {student.submitted ? (
-                            <CheckSquare className="w-5 h-5" />
+                            <CheckSquare className="w-5 h-5 text-purple-400" />
                           ) : (
-                            <Square className="w-5 h-5" />
+                            <Square className="w-5 h-5 text-slate-500" />
                           )}
                         </button>
                       </td>
@@ -489,13 +866,13 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                       {/* Overall Status Badge */}
                       <td className="py-3.5 px-4 text-center">
                         {student.overallStatus === 'COMPLETED' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 shadow-sm shadow-emerald-900/30">
-                            <CheckCircle2 className="w-3 h-3" />
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-600 shadow-sm shadow-emerald-900/40">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                             COMPLETED
                           </span>
                         ) : student.overallStatus === 'PENDING' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-950/80 text-amber-300 border border-amber-700/60">
-                            <Clock className="w-3 h-3" />
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-950/80 text-amber-300 border border-amber-700/70">
+                            <Clock className="w-3.5 h-3.5 text-amber-400" />
                             PENDING
                           </span>
                         ) : (
@@ -514,7 +891,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                               target="_blank"
                               rel="noopener noreferrer"
                               className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition"
-                              title="Open in Google Drive"
+                              title="Open Drive File"
                             >
                               <ExternalLink className="w-4 h-4" />
                             </a>
@@ -523,7 +900,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                             type="button"
                             onClick={() => onOpenDetails(student)}
                             className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer touch-manipulation"
-                            title="View student details"
+                            title="View student details & all individual certificates"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
@@ -540,9 +917,8 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
       {/* Mobile Card View (Optimized for Android / Phones) */}
       <div className="grid grid-cols-1 gap-3 md:hidden">
-        {/* Mobile Select-all button bar if multiple items */}
         {filteredStudents.length > 0 && (
-          <div className="flex items-center justify-between bg-slate-900 border border-slate-800 px-3.5 py-2 rounded-xl text-xs text-slate-300">
+          <div className="flex items-center justify-between bg-slate-900 border border-slate-800 px-3.5 py-2.5 rounded-xl text-xs text-slate-300 gap-2">
             <button
               onClick={handleToggleSelectAllFiltered}
               className="flex items-center gap-2 font-medium text-purple-400 cursor-pointer"
@@ -554,11 +930,16 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               )}
               <span>{isAllFilteredSelected ? 'Deselect all' : `Select all (${filteredStudents.length})`}</span>
             </button>
-            {selectedRollNos.size > 0 && (
-              <span className="text-slate-400 font-mono text-[11px]">
-                {selectedRollNos.size} selected
-              </span>
-            )}
+
+            {/* Mobile Last Scanned Badge */}
+            <div
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-950 border border-slate-800 text-slate-300"
+              title={`Last Sync: ${scannedTime.exact}`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span className="text-slate-400">Scanned:</span>
+              <span className="text-emerald-300 font-mono font-semibold">{scannedTime.formatted}</span>
+            </div>
           </div>
         )}
 
@@ -571,6 +952,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             const hasDriveFiles = student.driveFiles.length > 0;
             const firstDriveFile = hasDriveFiles ? student.driveFiles[0] : null;
             const isSelected = selectedRollNos.has(student.rollNo);
+            const totalCerts = student.certificates.length || student.driveFiles.length;
 
             return (
               <div
@@ -619,55 +1001,78 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   )}
                 </div>
 
-                {/* Certificates badges */}
-                {student.certificates.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {student.certificates.map((cert, idx) => (
-                      <span
-                        key={idx}
-                        className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-950 text-slate-300 border border-slate-800"
-                      >
-                        {cert}
-                      </span>
-                    ))}
+                {/* All Certificates Uploaded (Unified Portfolio) */}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold flex items-center gap-1">
+                    <Award className="w-3 h-3 text-blue-400" />
+                    All Certificates ({totalCerts}):
                   </div>
-                )}
+                  {totalCerts > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {student.certificates.map((cert, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-950 text-slate-300 border border-slate-800"
+                        >
+                          {cert}
+                        </span>
+                      ))}
+                      {student.driveFiles.length > student.certificates.length && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-950 text-purple-300 border border-purple-800">
+                          {student.driveFiles.length} files
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-600 italic">No certificates recorded</div>
+                  )}
+                </div>
 
-                {/* Status Pillars: Drive, Sheet, Submitted */}
+                {/* Status Pillars with Direct Admin Ticking: Drive, Sheet, Submitted */}
                 <div className="grid grid-cols-3 gap-2 py-2 border-y border-slate-800/80 text-center text-xs">
-                  {/* Drive */}
+                  {/* Drive Toggle */}
                   <div className="flex flex-col items-center">
                     <span className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
                       Drive
                     </span>
-                    {student.driveUploaded ? (
-                      <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Uploaded
-                      </span>
-                    ) : (
-                      <span className="text-slate-500 flex items-center gap-1">
-                        <XCircle className="w-3.5 h-3.5" /> No file
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => onToggleDriveUploaded(student.rollNo, student.driveUploaded)}
+                      className={`flex items-center gap-1 font-semibold cursor-pointer touch-manipulation text-xs ${
+                        student.driveUploaded ? 'text-emerald-400' : 'text-slate-500'
+                      }`}
+                    >
+                      {student.driveUploaded ? (
+                        <CheckSquare className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-600" />
+                      )}
+                      <span>{student.driveUploaded ? 'Yes' : 'No'}</span>
+                    </button>
                   </div>
 
-                  {/* Sheet */}
+                  {/* Sheet Toggle */}
                   <div className="flex flex-col items-center">
                     <span className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
                       Sheet
                     </span>
-                    {student.sheetUpdated ? (
-                      <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Updated
-                      </span>
-                    ) : (
-                      <span className="text-slate-500 flex items-center gap-1">
-                        <XCircle className="w-3.5 h-3.5" /> Pending
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => onToggleSheetUpdated(student.rollNo, student.sheetUpdated)}
+                      className={`flex items-center gap-1 font-semibold cursor-pointer touch-manipulation text-xs ${
+                        student.sheetUpdated ? 'text-emerald-400' : 'text-slate-500'
+                      }`}
+                    >
+                      {student.sheetUpdated ? (
+                        <CheckSquare className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-600" />
+                      )}
+                      <span>{student.sheetUpdated ? 'Yes' : 'No'}</span>
+                    </button>
                   </div>
 
-                  {/* Submitted */}
+                  {/* Submitted Toggle */}
                   <div className="flex flex-col items-center">
                     <span className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
                       Submitted
@@ -675,14 +1080,14 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     <button
                       type="button"
                       onClick={() => onToggleSubmitted(student.rollNo, student.submitted)}
-                      className={`flex items-center gap-1 font-semibold cursor-pointer touch-manipulation ${
+                      className={`flex items-center gap-1 font-semibold cursor-pointer touch-manipulation text-xs ${
                         student.submitted ? 'text-purple-400' : 'text-slate-500'
                       }`}
                     >
                       {student.submitted ? (
-                        <CheckSquare className="w-4 h-4" />
+                        <CheckSquare className="w-4 h-4 text-purple-400" />
                       ) : (
-                        <Square className="w-4 h-4" />
+                        <Square className="w-4 h-4 text-slate-600" />
                       )}
                       <span>{student.submitted ? 'Yes' : 'No'}</span>
                     </button>
@@ -710,7 +1115,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     onClick={() => onOpenDetails(student)}
                     className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-lg transition cursor-pointer touch-manipulation"
                   >
-                    View Details
+                    View Details ({totalCerts})
                   </button>
                 </div>
               </div>

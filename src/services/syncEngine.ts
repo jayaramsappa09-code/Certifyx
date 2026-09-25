@@ -14,8 +14,11 @@ import {
 } from '../types';
 import {
   getSubmittedStatusMap,
+  getDriveStatusOverrideMap,
+  getSheetStatusOverrideMap,
   getManualFileOverrides,
   getDuplicateResolutions,
+  getAppSettings,
   addSyncReport,
   addAuditLog,
 } from './storageService';
@@ -37,59 +40,177 @@ export const KNOWN_CERTIFICATE_PATTERNS: Array<{
   },
   {
     type: 'Coordinator Certificate',
-    regex: /\b(coordinator\s+certificate|coordinator)\b/i,
+    regex: /\b(coordinator\s+certificate|student\s+coordinator|coordinator)\b/i,
   },
   {
-    type: 'Hackathon',
-    regex: /\b(hackathon|hack|codefest|hacknight)\b/i,
+    type: 'Paper / Poster Presentation',
+    regex: /\b(paper\s+presentation|poster\s+presentation|project\s+expo|presentation)\b/i,
+  },
+  {
+    type: 'Workshop / Webinar',
+    regex: /\b(workshop|webinar|seminar|hands\s*on|bootcamp)\b/i,
+  },
+  {
+    type: 'Internship',
+    regex: /\b(internship|intern|industrial\s+training)\b/i,
+  },
+  {
+    type: 'Hackathon / Contest',
+    regex: /\b(hackathon|hack|codefest|hacknight|quantathon|coding\s+contest|quiz)\b/i,
   },
   {
     type: 'Course',
-    regex: /\b(course|training|workshop|udemy|coursera|nptel|edx|bootcamp)\b/i,
+    regex: /\b(course|training|udemy|coursera|nptel|edx|great\s*learning|infosys|cisco|oracle|aws|google\s*cloud)\b/i,
+  },
+  {
+    type: 'Merit / Award',
+    regex: /\b(merit|distinction|rank|topper|award|winner|runner|1st|2nd|3rd|first|second|third|prize)\b/i,
   },
   {
     type: 'Participation',
     regex: /\b(participation|participated|participant|attendee)\b/i,
   },
   {
-    type: 'Merit',
-    regex: /\b(merit|distinction|rank|topper)\b/i,
-  },
-  {
-    type: 'Award',
-    regex: /\b(award|winner|runner|1st|2nd|3rd|first|second|third|prize)\b/i,
+    type: 'Badge / Credential',
+    regex: /\b(badge|skill\s*badge|credential|milestone)\b/i,
   },
   {
     type: 'Certification',
     regex: /\b(certification|certified|certificate)\b/i,
   },
-  {
-    type: 'Badge',
-    regex: /\b(badge|skill\s*badge|credential)\b/i,
-  },
 ];
 
 /**
- * Detect certificate type from filename or text
+ * Custom Regex Parser for Certificate Filenames.
+ * Supports:
+ * 1. Named capture groups: `(?<rollNo>...)`, `(?<studentName>...)`, `(?<certTitle>...)`, `(?<certType>...)`
+ * 2. Positional capture groups: group 1 (rollNo), group 2 (studentName or title), group 3 (title)
  */
-export function detectCertificateType(filename: string): {
+export function parseFilenameWithCustomRegex(
+  filename: string,
+  pattern?: string
+): {
+  rollNo?: string;
+  studentName?: string;
+  certTitle?: string;
+  certType?: string;
+} | null {
+  if (!filename || !pattern || !pattern.trim()) return null;
+  try {
+    const trimmedPattern = pattern.trim();
+    const regex = new RegExp(trimmedPattern, 'i');
+    const match = filename.match(regex);
+    if (!match) return null;
+
+    const result: {
+      rollNo?: string;
+      studentName?: string;
+      certTitle?: string;
+      certType?: string;
+    } = {};
+
+    // 1. Check named capture groups
+    if (match.groups) {
+      const g = match.groups;
+      if (g.rollNo || g.roll || g.rollno || g.regNo || g.id) {
+        result.rollNo = g.rollNo || g.roll || g.rollno || g.regNo || g.id;
+      }
+      if (g.studentName || g.name || g.student) {
+        result.studentName = g.studentName || g.name || g.student;
+      }
+      if (g.certTitle || g.title || g.event || g.subject) {
+        result.certTitle = g.certTitle || g.title || g.event || g.subject;
+      }
+      if (g.certType || g.type || g.category) {
+        result.certType = g.certType || g.type || g.category;
+      }
+    }
+
+    // 2. Fallback to numbered positional groups
+    if (!result.rollNo && match[1]) {
+      result.rollNo = match[1];
+    }
+    if (!result.studentName && match[2] && isNaN(Number(match[2]))) {
+      result.studentName = match[2];
+    }
+    if (!result.certTitle && match[3]) {
+      result.certTitle = match[3];
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+  } catch (err) {
+    console.warn('Invalid custom regex pattern:', pattern, err);
+    return null;
+  }
+}
+
+/**
+ * Extract clean certificate title/subject by removing roll numbers, student names, and file extensions
+ */
+export function extractCertificateTitle(
+  filename: string,
+  rollNo?: string,
+  studentName?: string
+): string {
+  if (!filename) return 'Certificate';
+  let clean = filename.replace(/\.[a-zA-Z0-9]+$/, ''); // remove extension
+  if (rollNo) {
+    const rollRegex = new RegExp(rollNo, 'gi');
+    clean = clean.replace(rollRegex, '');
+  }
+  clean = clean.replace(/[0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2}/gi, '');
+  if (studentName) {
+    const parts = studentName.split(/\s+/).filter((p) => p.length >= 3);
+    for (const part of parts) {
+      clean = clean.replace(new RegExp(part, 'gi'), '');
+    }
+  }
+  clean = clean.replace(/[_\-+=()]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!clean || clean.length < 2) {
+    return 'Certificate';
+  }
+  return clean;
+}
+
+/**
+ * Detect certificate type from filename or text with optional custom patterns
+ */
+export function detectCertificateType(
+  filename: string,
+  customPatterns?: Array<{ type: string; pattern: string }>
+): {
   type: string;
   isAmbiguous: boolean;
 } {
   if (!filename) {
-    return { type: 'Certificate type needs review', isAmbiguous: true };
+    return { type: 'Certificate', isAmbiguous: false };
   }
 
   // Remove file extension
   const cleanName = filename.replace(/\.[a-zA-Z0-9]+$/, '').replace(/[_-]/g, ' ');
 
+  // 1. Check custom patterns first if configured
+  if (customPatterns && customPatterns.length > 0) {
+    for (const custom of customPatterns) {
+      if (custom.type && custom.pattern) {
+        try {
+          const r = new RegExp(custom.pattern, 'i');
+          if (r.test(cleanName)) {
+            return { type: custom.type, isAmbiguous: false };
+          }
+        } catch {}
+      }
+    }
+  }
+
+  // 2. Standard built-in patterns
   for (const item of KNOWN_CERTIFICATE_PATTERNS) {
     if (item.regex.test(cleanName)) {
       return { type: item.type, isAmbiguous: false };
     }
   }
 
-  return { type: 'Certificate type needs review', isAmbiguous: true };
+  return { type: 'Certificate', isAmbiguous: false };
 }
 
 export interface SyncEngineInput {
@@ -97,6 +218,11 @@ export interface SyncEngineInput {
   sheetRows?: SheetRowRecord[];
   userEmail?: string;
   useSeedDataIfEmpty?: boolean;
+  customFilenameRegex?: string;
+  customCertTypePatterns?: Array<{ type: string; pattern: string }>;
+  enableFuzzyNameMatching?: boolean;
+  enableParentFolderInheritance?: boolean;
+  enableSheetLinkMatching?: boolean;
 }
 
 export interface SyncEngineResult {
@@ -117,6 +243,15 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
   const manualOverrides = getManualFileOverrides();
   const duplicateResolutions = getDuplicateResolutions();
   const submittedMap = getSubmittedStatusMap();
+  const driveOverrides = getDriveStatusOverrideMap();
+  const sheetOverrides = getSheetStatusOverrideMap();
+  const appSettings = getAppSettings();
+
+  const customRegex = input.customFilenameRegex ?? appSettings.customFilenameRegex;
+  const customCertPatterns = input.customCertTypePatterns ?? appSettings.customCertTypePatterns;
+  const allowFuzzyNames = input.enableFuzzyNameMatching ?? appSettings.enableFuzzyNameMatching ?? true;
+  const allowFolderInheritance = input.enableParentFolderInheritance ?? appSettings.enableParentFolderInheritance ?? true;
+  const allowSheetLinkMatch = input.enableSheetLinkMatching ?? appSettings.enableSheetLinkMatching ?? true;
 
   let driveFiles = input.driveFiles ? [...input.driveFiles] : [];
   let sheetRows = input.sheetRows ? [...input.sheetRows] : [];
@@ -156,15 +291,77 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
   let outsideClassSheetCount = 0;
   let matchedCertificatesCount = 0;
 
-  // 1. Process Drive Files
-  for (const file of driveFiles) {
-    // Check for manual override first
-    const override = manualOverrides[file.id];
-    let detectedRoll = override?.assignedRollNo || extractRollNumberFromText(file.name);
-    let detectedType = override?.assignedCertType;
+  // Pre-index any Google Drive file URLs present in Spreadsheet Rows to auto-link them
+  const fileIdToSheetRollMap = new Map<string, string>();
+  if (allowSheetLinkMatch) {
+    for (const row of sheetRows) {
+      if (row.certificateUrl && row.matchedRollNo) {
+        const match = row.certificateUrl.match(/(?:file\/d\/|[?&]id=)([a-zA-Z0-9_-]+)/i);
+        if (match && match[1]) {
+          fileIdToSheetRollMap.set(match[1], row.matchedRollNo);
+        }
+      }
+    }
+  }
 
+  // 1. Process Drive Files with Multi-Source Roll Number, Regex, and Name Detection
+  for (const file of driveFiles) {
+    let detectedRoll: string | null = null;
+    let detectedType: string | undefined = undefined;
+    let detectedTitle: string | undefined = undefined;
+    let detectedName: string | undefined = undefined;
+    let matchMethod: DriveCertificateFile['matchMethod'] = undefined;
+
+    // Check 1: Manual admin override
+    const override = manualOverrides[file.id];
+    if (override?.assignedRollNo) {
+      detectedRoll = override.assignedRollNo;
+      detectedType = override.assignedCertType;
+      matchMethod = 'MANUAL_OVERRIDE';
+    }
+
+    // Check 2: Custom Admin Regex
+    if (!detectedRoll && customRegex) {
+      const parsed = parseFilenameWithCustomRegex(file.name, customRegex);
+      if (parsed?.rollNo) {
+        detectedRoll = parsed.rollNo;
+        if (parsed.certType) detectedType = parsed.certType;
+        if (parsed.certTitle) detectedTitle = parsed.certTitle;
+        if (parsed.studentName) detectedName = parsed.studentName;
+        matchMethod = 'CUSTOM_REGEX';
+      }
+    }
+
+    // Check 3: Sheet URL Reference Link
+    if (!detectedRoll && allowSheetLinkMatch) {
+      const sheetRoll = fileIdToSheetRollMap.get(file.id);
+      if (sheetRoll) {
+        detectedRoll = sheetRoll;
+        matchMethod = 'SHEET_URL_LINK';
+      }
+    }
+
+    // Check 4: Standard University Format / Delimited Roll Number / Student Name in Filename
+    if (!detectedRoll) {
+      const extracted = extractRollNumberFromText(file.name);
+      if (extracted) {
+        detectedRoll = extracted;
+        matchMethod = 'STANDARD_REGEX';
+      }
+    }
+
+    // Check 5: Parent Subfolder Name Inheritance (e.g. inside "25A31A05GB/" or "SAPPA JAYARAM/")
+    if (!detectedRoll && allowFolderInheritance && file.parentFolderName) {
+      const extractedFromFolder = extractRollNumberFromText(file.parentFolderName);
+      if (extractedFromFolder) {
+        detectedRoll = extractedFromFolder;
+        matchMethod = 'PARENT_FOLDER';
+      }
+    }
+
+    // Certificate Type Detection
     if (!detectedType) {
-      const typeResult = detectCertificateType(file.name);
+      const typeResult = detectCertificateType(file.name, customCertPatterns);
       detectedType = typeResult.type;
       if (typeResult.isAmbiguous) {
         ambiguousCertFiles.push({
@@ -176,6 +373,7 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     }
 
     file.detectedCertType = detectedType;
+    file.matchMethod = matchMethod;
 
     if (!detectedRoll) {
       // Unidentified file (no roll number found)
@@ -187,8 +385,23 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     const normalizedRoll = normalizeRollNumber(detectedRoll);
     file.detectedRollNo = normalizedRoll;
 
+    const matchedRosterStudent = ROSTER_MAP.get(normalizedRoll);
+    if (matchedRosterStudent) {
+      file.detectedStudentName = matchedRosterStudent.name;
+    } else if (detectedName) {
+      file.detectedStudentName = detectedName;
+    }
+
+    file.detectedCertTitle =
+      detectedTitle ||
+      extractCertificateTitle(
+        file.name,
+        normalizedRoll,
+        file.detectedStudentName
+      );
+
     if (!isValidClassRollNumber(normalizedRoll)) {
-      // Roll number exists in filename, but is outside the 67-person roster
+      // Roll number exists in filename or folder, but is outside the 67-person roster
       file.isOutsideClass = true;
       outsideClassFiles.push(file);
       outsideClassDriveCount++;
@@ -205,7 +418,7 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
       continue;
     }
 
-    const dupKey = `${normalizedRoll}__${detectedType.toLowerCase()}`;
+    const dupKey = `${normalizedRoll}__${(detectedType || 'cert').toLowerCase()}`;
     const existingSame = certTypeCounts.get(dupKey) || [];
     if (existingSame.length > 0) {
       file.isDuplicate = true;
@@ -238,7 +451,7 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
         targetRoll = extracted;
       } else if (isValidClassRollNumber(normalized)) {
         targetRoll = normalized;
-      } else if (row.name) {
+      } else if (row.name && allowFuzzyNames) {
         // Match by student name
         const normName = row.name.toLowerCase().replace(/[^a-z0-9]/g, '');
         if (normName.length >= 4) {
@@ -279,46 +492,40 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     studentSheetRecordsMap.set(normRoll, currentList);
   }
 
-  // 3. Build status record for each of the EXACT 67 class students
-  const studentStatuses: StudentStatusRecord[] = [];
-  let studentsWithCertsCount = 0;
+  // 3. Build Student Status Records for all 67 students strictly
+  const studentStatuses: StudentStatusRecord[] = FIXED_CLASS_ROSTER.map((student) => {
+    const normRoll = student.rollNo;
+    const matchedDriveFiles = studentDriveFilesMap.get(normRoll) || [];
+    const matchedSheetRows = studentSheetRecordsMap.get(normRoll) || [];
 
-  for (const student of FIXED_CLASS_ROSTER) {
-    const normRoll = normalizeRollNumber(student.rollNo);
+    // Drive status: true if Drive has matching files OR manual admin override is set to true
+    const driveOverrideVal = driveOverrides[normRoll];
+    const driveUploaded =
+      typeof driveOverrideVal === 'boolean'
+        ? driveOverrideVal
+        : matchedDriveFiles.length > 0;
 
-    const driveFilesForStudent = studentDriveFilesMap.get(normRoll) || [];
-    const sheetRowsForStudent = studentSheetRecordsMap.get(normRoll) || [];
+    // Sheet status: true if Sheet has matching rows OR manual admin override is set to true
+    const sheetOverrideVal = sheetOverrides[normRoll];
+    const sheetUpdated =
+      typeof sheetOverrideVal === 'boolean'
+        ? sheetOverrideVal
+        : matchedSheetRows.length > 0;
 
-    // Drive Uploaded = TRUE if at least 1 valid certificate in Drive
-    const driveUploaded = driveFilesForStudent.length > 0;
-    // Spreadsheet Updated = TRUE if matching row in Sheet
-    const sheetUpdated = sheetRowsForStudent.length > 0;
-    // Submitted status MUST be preserved from manual admin tracking (never reset!)
-    const submitted = Boolean(submittedMap[normRoll]);
+    // Submitted status: admin tick, defaults to false
+    const submitted = submittedMap[normRoll] ?? false;
 
-    // Aggregate unique certificate types from Drive and Sheet
-    const certTypesSet = new Set<string>();
-    for (const f of driveFilesForStudent) {
-      if (f.detectedCertType && f.detectedCertType !== 'Certificate type needs review') {
-        certTypesSet.add(f.detectedCertType);
-      }
-    }
-    for (const r of sheetRowsForStudent) {
-      if (r.certificateType) {
-        const parsed = detectCertificateType(r.certificateType);
-        certTypesSet.add(parsed.type !== 'Certificate type needs review' ? parsed.type : r.certificateType);
-      }
-    }
+    // Aggregate unique certificate names/types
+    const certNamesSet = new Set<string>();
+    matchedDriveFiles.forEach((f) => {
+      if (f.detectedCertTitle) certNamesSet.add(f.detectedCertTitle);
+      else if (f.detectedCertType) certNamesSet.add(f.detectedCertType);
+    });
+    matchedSheetRows.forEach((r) => {
+      if (r.certificateType) certNamesSet.add(r.certificateType);
+    });
 
-    const certificatesList = Array.from(certTypesSet);
-    if (certificatesList.length > 0 || driveUploaded) {
-      studentsWithCertsCount++;
-    }
-
-    // Determine Overall Status according to rule:
-    // If Drive Uploaded = TRUE AND Spreadsheet Updated = TRUE AND Submitted = TRUE -> COMPLETED
-    // If all three are FALSE -> NOT STARTED
-    // Otherwise -> PENDING
+    // Overall 3-way status: Completed (all 3 true), Not Started (all 3 false), Pending (otherwise)
     let overallStatus: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
     if (driveUploaded && sheetUpdated && submitted) {
       overallStatus = 'COMPLETED';
@@ -328,29 +535,33 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
       overallStatus = 'PENDING';
     }
 
-    studentStatuses.push({
+    return {
       rollNo: student.rollNo,
       name: student.name,
-      certificates: certificatesList,
+      certificates: Array.from(certNamesSet),
       driveUploaded,
       sheetUpdated,
       submitted,
       overallStatus,
-      driveFiles: driveFilesForStudent,
-      sheetRecords: sheetRowsForStudent,
+      driveFiles: matchedDriveFiles,
+      sheetRecords: matchedSheetRows,
       lastUpdated: new Date().toISOString(),
-    });
-  }
+    };
+  });
 
-  // 4. Create Sync Report
+  const studentsWithCertificates = studentStatuses.filter(
+    (s) => s.driveFiles.length > 0 || s.sheetRecords.length > 0
+  ).length;
+
   const durationMs = Date.now() - startTime;
+
   const report: SyncReport = {
-    id: 'sync_' + Date.now(),
+    id: `SYNC-${Date.now().toString(36).toUpperCase()}`,
     timestamp: new Date().toISOString(),
-    studentsChecked: FIXED_CLASS_ROSTER.length, // 67
+    studentsChecked: FIXED_CLASS_ROSTER.length,
     driveFilesScanned: driveFiles.length,
     matchedCertificates: matchedCertificatesCount,
-    studentsWithCertificates: studentsWithCertsCount,
+    studentsWithCertificates,
     spreadsheetRecordsChecked: sheetRows.length,
     spreadsheetMatches: sheetMatchesCount,
     outsideClassIgnored: outsideClassDriveCount + outsideClassSheetCount,
@@ -359,12 +570,12 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     durationMs,
   };
 
-  // Record audit log & history
+  // Persist report & log
   addSyncReport(report);
   addAuditLog(
     'Sync completed',
-    input.userEmail || 'admin',
-    `Checked 67 students. Found ${matchedCertificatesCount} drive certificates, ${sheetMatchesCount} sheet matches. Ignored ${report.outsideClassIgnored} outside-class items.`,
+    input.userEmail || 'system',
+    `Scanned ${driveFiles.length} Drive files & ${sheetRows.length} Sheet rows across 67 students (${report.id})`,
     'SYNC'
   );
 

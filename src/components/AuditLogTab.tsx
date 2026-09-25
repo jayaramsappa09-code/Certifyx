@@ -103,9 +103,9 @@ export const AuditLogTab: React.FC<AuditLogTabProps> = ({ logs, onRefresh }) => 
               No audit logs found for the current search or filter.
             </div>
           ) : (
-            filteredLogs.map((log) => (
+            filteredLogs.map((log, idx) => (
               <div
-                key={log.id}
+                key={log.id ? `${log.id}_${idx}` : `log_${idx}`}
                 className="p-4 hover:bg-slate-800/40 transition flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-xs"
               >
                 <div className="space-y-1">

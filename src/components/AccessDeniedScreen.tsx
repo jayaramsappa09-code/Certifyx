@@ -49,14 +49,16 @@ export const AccessDeniedScreen: React.FC<AccessDeniedScreenProps> = ({
 
         <div className="flex flex-col gap-3">
           {onQuickAdmin && (
-            <button
-              type="button"
-              onClick={onQuickAdmin}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition shadow-lg shadow-indigo-600/30 cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Continue as Admin (jayaramsappa09@gmail.com)</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onQuickAdmin}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition shadow-lg shadow-indigo-600/30 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>Continue as Admin (jayaramsappa09@gmail.com)</span>
+              </button>
+            </>
           )}
 
           <button
