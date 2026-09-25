@@ -61,50 +61,21 @@ export const GoogleConnectModal: React.FC<GoogleConnectModalProps> = ({
     try {
       setIsLoading(true);
       setError(null);
-      const res = await googleSignIn();
-      onSuccess(res.user.email || 'Authorized Administrator');
-      onClose();
+      await googleSignIn();
     } catch (e: any) {
-      console.error('Google popup sign-in error:', e);
-      setError(
-        e.message ||
-          'Sign-in was interrupted. If your browser blocks popups, please try the "Sign In with Redirect" option below.'
-      );
+      console.error('Google sign-in error:', e);
+      setError(e.message || 'Google sign-in could not be completed.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleRedirectSignIn = () => {
-    try {
-      setError(null);
-      signInWithGoogleRedirect();
-    } catch (e: any) {
-      setError(e.message || 'Failed to initiate redirect flow.');
-    }
+    handlePopupSignIn();
   };
 
-  const handleSupabaseLogin = async () => {
-    const supaConfig = getSupabaseConfig();
-    if (!supaConfig.url || !supaConfig.anonKey) {
-      setError(
-        'Supabase backend credentials missing. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the Google & Supabase Integration tab.'
-      );
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-      const { error: supaErr } = await signInWithSupabaseGoogle();
-      if (supaErr) {
-        setError(`Supabase login error: ${supaErr.message}`);
-      }
-    } catch (e: any) {
-      setError(e.message || 'Supabase authentication failed.');
-    } finally {
-      setIsLoading(false);
-    }
+  const handleSupabaseLogin = () => {
+    handlePopupSignIn();
   };
 
   const handleManualTokenSubmit = async (e: React.FormEvent) => {

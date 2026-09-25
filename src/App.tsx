@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { User } from 'firebase/auth';
 import {
   initAuth,
   googleSignIn,
@@ -96,7 +95,7 @@ import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-re
 
 export default function App() {
   // Authentication state
-  const [currentUser, setCurrentUser] = useState<AuthUser | User | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAccessDenied, setIsAccessDenied] = useState(false);

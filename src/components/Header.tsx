@@ -13,12 +13,11 @@ import {
   Sparkles,
   ChevronRight,
 } from 'lucide-react';
-import { User } from 'firebase/auth';
 import { AuthUser } from '../types';
 import { ConnectivityStatusIndicator } from './ConnectivityStatusIndicator';
 
 interface HeaderProps {
-  user: AuthUser | User | null;
+  user: AuthUser | null;
   activeTab: 'dashboard' | 'review' | 'integration' | 'history' | 'audit' | 'docs';
   setActiveTab: (tab: 'dashboard' | 'review' | 'integration' | 'history' | 'audit' | 'docs') => void;
   onSyncNow: () => void;
