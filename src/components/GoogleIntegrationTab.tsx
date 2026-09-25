@@ -35,6 +35,7 @@ import {
 import { parseFilenameWithCustomRegex, detectCertificateType } from '../services/syncEngine';
 import { ROSTER_MAP, isValidClassRollNumber, normalizeRollNumber } from '../data/classRoster';
 import { addAuditLog } from '../services/storageService';
+import { SupabaseGoogleOutsideConfigCard } from './SupabaseGoogleOutsideConfigCard';
 import { Code, Sparkles, Wand2, Terminal, Info } from 'lucide-react';
 
 interface GoogleIntegrationTabProps {
@@ -1218,6 +1219,16 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Supabase & Google OAuth Client for Standalone Outside AI Studio Deployments */}
+        <SupabaseGoogleOutsideConfigCard
+          userEmail={userEmail}
+          onGoogleTokenReceived={(token) => {
+            if (token) {
+              onTriggerSync();
+            }
+          }}
+        />
 
         {/* Administrator Allowlist (Section 28) */}
         <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3">

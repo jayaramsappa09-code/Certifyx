@@ -19,6 +19,7 @@ import {
   GOOGLE_CLIENT_ID,
   DEFAULT_ADMIN_EMAILS,
 } from '../services/firebaseAuth';
+import { signInWithSupabaseGoogle, getSupabaseConfig } from '../services/supabaseClient';
 
 interface GoogleConnectModalProps {
   isOpen: boolean;
@@ -80,6 +81,29 @@ export const GoogleConnectModal: React.FC<GoogleConnectModalProps> = ({
       signInWithGoogleRedirect();
     } catch (e: any) {
       setError(e.message || 'Failed to initiate redirect flow.');
+    }
+  };
+
+  const handleSupabaseLogin = async () => {
+    const supaConfig = getSupabaseConfig();
+    if (!supaConfig.url || !supaConfig.anonKey) {
+      setError(
+        'Supabase backend credentials missing. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the Google & Supabase Integration tab.'
+      );
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      const { error: supaErr } = await signInWithSupabaseGoogle();
+      if (supaErr) {
+        setError(`Supabase login error: ${supaErr.message}`);
+      }
+    } catch (e: any) {
+      setError(e.message || 'Supabase authentication failed.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -222,6 +246,15 @@ export const GoogleConnectModal: React.FC<GoogleConnectModalProps> = ({
           >
             <ExternalLink className="w-3.5 h-3.5" />
             <span>Sign In with Google (Direct Redirect - Bypasses Popup Blockers)</span>
+          </button>
+
+          <button
+            onClick={handleSupabaseLogin}
+            disabled={isLoading}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-950 hover:bg-emerald-900 border border-emerald-800 text-emerald-200 text-xs font-semibold rounded-2xl transition cursor-pointer"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Sign In with Google via Supabase (Outside AI Studio)</span>
           </button>
         </div>
 

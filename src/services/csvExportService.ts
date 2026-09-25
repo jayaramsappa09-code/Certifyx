@@ -340,3 +340,252 @@ export function exportAuditLogsCsv(logs: AuditLogEntry[]): void {
   const dateStr = new Date().toISOString().slice(0, 10);
   downloadCsv(csv, `5_Audit_Trail_Logs_${dateStr}.csv`);
 }
+
+/**
+ * Advanced Export Customization Options
+ */
+export interface AdvancedExportOptions {
+  driveUploadedLabels: { trueLabel: string; falseLabel: string };
+  sheetUpdatedLabels: { trueLabel: string; falseLabel: string };
+  submittedLabels: { trueLabel: string; falseLabel: string };
+  statusLabels?: { completed: string; pending: string; notStarted: string };
+}
+
+export const DEFAULT_ADVANCED_EXPORT_OPTIONS: AdvancedExportOptions = {
+  driveUploadedLabels: { trueLabel: 'Yes (Uploaded)', falseLabel: 'No (Missing)' },
+  sheetUpdatedLabels: { trueLabel: 'Yes (Recorded)', falseLabel: 'No (Missing)' },
+  submittedLabels: { trueLabel: 'Confirmed', falseLabel: 'Unconfirmed' },
+  statusLabels: {
+    completed: 'COMPLETED',
+    pending: 'PENDING',
+    notStarted: 'NOT STARTED',
+  },
+};
+
+/**
+ * Advanced Sheet 1: Customized Master Roster Data Export
+ * Replaces boolean flags (TRUE/FALSE) with custom user-defined text labels.
+ */
+export function exportAdvancedCustomizedDataCsv(
+  students: StudentStatusRecord[],
+  options: AdvancedExportOptions = DEFAULT_ADVANCED_EXPORT_OPTIONS
+): void {
+  const headers = [
+    'Roll No',
+    'Student Name',
+    'Total Certificates Count',
+    'All Certificates (Combined)',
+    `Drive Uploaded (${options.driveUploadedLabels.trueLabel} / ${options.driveUploadedLabels.falseLabel})`,
+    `Spreadsheet Updated (${options.sheetUpdatedLabels.trueLabel} / ${options.sheetUpdatedLabels.falseLabel})`,
+    `Admin Confirmed (${options.submittedLabels.trueLabel} / ${options.submittedLabels.falseLabel})`,
+    'Overall Status',
+    'Drive File Names',
+    'Drive Shareable Links',
+    'Sheet Row Numbers',
+    'Last Verified Timestamp',
+  ];
+
+  const rows = students.map((s) => {
+    const certListStr = s.certificates.join('; ');
+    const driveFileNames = s.driveFiles.map((f) => f.name).join('; ');
+    const driveLinks = s.driveFiles
+      .map((f) =>
+        f.webViewLink && f.webViewLink !== '#'
+          ? f.webViewLink
+          : f.id
+          ? `https://drive.google.com/file/d/${f.id}/view?usp=sharing`
+          : ''
+      )
+      .filter(Boolean)
+      .join('; ');
+    const sheetRows = s.sheetRecords.map((r) => `#${r.rowIndex}`).join('; ');
+
+    const driveVal = s.driveUploaded
+      ? options.driveUploadedLabels.trueLabel
+      : options.driveUploadedLabels.falseLabel;
+    const sheetVal = s.sheetUpdated
+      ? options.sheetUpdatedLabels.trueLabel
+      : options.sheetUpdatedLabels.falseLabel;
+    const submittedVal = s.submitted
+      ? options.submittedLabels.trueLabel
+      : options.submittedLabels.falseLabel;
+
+    let overallStatusFormatted: string = s.overallStatus;
+    if (options.statusLabels) {
+      if (s.overallStatus === 'COMPLETED') overallStatusFormatted = options.statusLabels.completed;
+      else if (s.overallStatus === 'PENDING') overallStatusFormatted = options.statusLabels.pending;
+      else overallStatusFormatted = options.statusLabels.notStarted;
+    }
+
+    return [
+      escapeCsvCell(s.rollNo),
+      escapeCsvCell(s.name),
+      s.certificates.length || s.driveFiles.length,
+      escapeCsvCell(certListStr || 'None'),
+      escapeCsvCell(driveVal),
+      escapeCsvCell(sheetVal),
+      escapeCsvCell(submittedVal),
+      escapeCsvCell(overallStatusFormatted),
+      escapeCsvCell(driveFileNames || 'None'),
+      escapeCsvCell(driveLinks || 'None'),
+      escapeCsvCell(sheetRows || 'None'),
+      escapeCsvCell(s.lastUpdated || new Date().toISOString()),
+    ].join(',');
+  });
+
+  const csv = [headers.join(','), ...rows].join('\n');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  downloadCsv(csv, `Sheet1_Customized_Roster_Data_${dateStr}.csv`);
+}
+
+/**
+ * Advanced Sheet 2: Classification & Executive Analysis Sheet
+ * Categorizes students who missed Drive, missed Sheet, missed BOTH, or completed BOTH,
+ * along with executive rate breakdown analysis.
+ */
+export function exportClassificationAndAnalysisCsv(
+  students: StudentStatusRecord[],
+  options: AdvancedExportOptions = DEFAULT_ADVANCED_EXPORT_OPTIONS
+): void {
+  const total = students.length || 67;
+  const missingDrive = students.filter((s) => !s.driveUploaded);
+  const missingSheet = students.filter((s) => !s.sheetUpdated);
+  const missingBoth = students.filter((s) => !s.driveUploaded && !s.sheetUpdated);
+  const completedBoth = students.filter((s) => s.driveUploaded && s.sheetUpdated);
+
+  const driveVal = (val: boolean) =>
+    val ? options.driveUploadedLabels.trueLabel : options.driveUploadedLabels.falseLabel;
+  const sheetVal = (val: boolean) =>
+    val ? options.sheetUpdatedLabels.trueLabel : options.sheetUpdatedLabels.falseLabel;
+  const subVal = (val: boolean) =>
+    val ? options.submittedLabels.trueLabel : options.submittedLabels.falseLabel;
+
+  const lines: string[] = [];
+
+  // ==========================================
+  // SECTION 1: EXECUTIVE ANALYSIS & SUMMARY METRICS
+  // ==========================================
+  lines.push('=== SECTION 1: EXECUTIVE ANALYSIS & ROSTER COMPLIANCE SUMMARY ===');
+  lines.push('Metric Category,Student Count,Percentage of Class Roster,Details & Compliance Standard');
+  lines.push(`Total Roster Size,${total},100%,Total students enrolled in official class roster`);
+  lines.push(
+    `Fully Compliant (Drive + Sheet),${completedBoth.length},${Math.round(
+      (completedBoth.length / total) * 100
+    )}%,Students with verified Drive file AND Sheet entry`
+  );
+  lines.push(
+    `Missing Google Drive Upload,${missingDrive.length},${Math.round(
+      (missingDrive.length / total) * 100
+    )}%,Students without any matched certificate in Google Drive`
+  );
+  lines.push(
+    `Missing Google Sheet Record,${missingSheet.length},${Math.round(
+      (missingSheet.length / total) * 100
+    )}%,Students without matching row record in Google Sheet`
+  );
+  lines.push(
+    `Missing BOTH (Drive AND Sheet),${missingBoth.length},${Math.round(
+      (missingBoth.length / total) * 100
+    )}%,Students who have not submitted on Drive AND not in Sheet`
+  );
+  lines.push('');
+
+  // ==========================================
+  // SECTION 2: STUDENTS WHO DIDN'T SUBMIT ON DRIVE
+  // ==========================================
+  lines.push(`=== SECTION 2: STUDENTS WHO DID NOT SUBMIT ON GOOGLE DRIVE (${missingDrive.length} Students) ===`);
+  lines.push(`Roll No,Student Name,Drive Status,Sheet Status,Admin Confirmed,Overall Status,Action Required`);
+  if (missingDrive.length === 0) {
+    lines.push('None,All students have submitted files in Google Drive!,N/A,N/A,N/A,COMPLETED,All clear');
+  } else {
+    missingDrive.forEach((s) => {
+      lines.push(
+        [
+          escapeCsvCell(s.rollNo),
+          escapeCsvCell(s.name),
+          escapeCsvCell(driveVal(s.driveUploaded)),
+          escapeCsvCell(sheetVal(s.sheetUpdated)),
+          escapeCsvCell(subVal(s.submitted)),
+          escapeCsvCell(s.overallStatus),
+          escapeCsvCell(`Upload certificate file containing roll number ${s.rollNo} to Google Drive`),
+        ].join(',')
+      );
+    });
+  }
+  lines.push('');
+
+  // ==========================================
+  // SECTION 3: STUDENTS WHO DIDN'T COMPLETE SHEET
+  // ==========================================
+  lines.push(`=== SECTION 3: STUDENTS WHO DID NOT COMPLETE GOOGLE SHEET (${missingSheet.length} Students) ===`);
+  lines.push(`Roll No,Student Name,Drive Status,Sheet Status,Admin Confirmed,Overall Status,Action Required`);
+  if (missingSheet.length === 0) {
+    lines.push('None,All students have matching row entries in Google Sheet!,N/A,N/A,N/A,COMPLETED,All clear');
+  } else {
+    missingSheet.forEach((s) => {
+      lines.push(
+        [
+          escapeCsvCell(s.rollNo),
+          escapeCsvCell(s.name),
+          escapeCsvCell(driveVal(s.driveUploaded)),
+          escapeCsvCell(sheetVal(s.sheetUpdated)),
+          escapeCsvCell(subVal(s.submitted)),
+          escapeCsvCell(s.overallStatus),
+          escapeCsvCell(`Add row entry with roll number ${s.rollNo} into Google Sheet`),
+        ].join(',')
+      );
+    });
+  }
+  lines.push('');
+
+  // ==========================================
+  // SECTION 4: STUDENTS WHO FAILED BOTH (MISSING DRIVE AND SHEET)
+  // ==========================================
+  lines.push(`=== SECTION 4: CRITICAL DEFAULTERS - MISSING BOTH DRIVE AND SHEET (${missingBoth.length} Students) ===`);
+  lines.push(`Roll No,Student Name,Drive Status,Sheet Status,Admin Confirmed,Overall Status,Action Required`);
+  if (missingBoth.length === 0) {
+    lines.push('None,No students are missing both Drive and Sheet!,N/A,N/A,N/A,COMPLETED,All clear');
+  } else {
+    missingBoth.forEach((s) => {
+      lines.push(
+        [
+          escapeCsvCell(s.rollNo),
+          escapeCsvCell(s.name),
+          escapeCsvCell(driveVal(s.driveUploaded)),
+          escapeCsvCell(sheetVal(s.sheetUpdated)),
+          escapeCsvCell(subVal(s.submitted)),
+          escapeCsvCell(s.overallStatus),
+          escapeCsvCell('URGENT: Submit certificate to Google Drive AND fill out Google Sheet form'),
+        ].join(',')
+      );
+    });
+  }
+  lines.push('');
+
+  // ==========================================
+  // SECTION 5: FULLY VERIFIED STUDENTS (COMPLETED BOTH)
+  // ==========================================
+  lines.push(`=== SECTION 5: FULLY COMPLIANT STUDENTS - DRIVE & SHEET VERIFIED (${completedBoth.length} Students) ===`);
+  lines.push(`Roll No,Student Name,Certificates Count,Drive Status,Sheet Status,Admin Confirmed,Overall Status`);
+  if (completedBoth.length === 0) {
+    lines.push('None,No students fully verified yet.,0,N/A,N/A,N/A,PENDING');
+  } else {
+    completedBoth.forEach((s) => {
+      lines.push(
+        [
+          escapeCsvCell(s.rollNo),
+          escapeCsvCell(s.name),
+          s.certificates.length || s.driveFiles.length,
+          escapeCsvCell(driveVal(s.driveUploaded)),
+          escapeCsvCell(sheetVal(s.sheetUpdated)),
+          escapeCsvCell(subVal(s.submitted)),
+          escapeCsvCell(s.overallStatus),
+        ].join(',')
+      );
+    });
+  }
+
+  const csv = lines.join('\n');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  downloadCsv(csv, `Sheet2_Classification_And_Analysis_${dateStr}.csv`);
+}

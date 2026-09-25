@@ -21,6 +21,8 @@ import {
   Layers,
   FileCheck,
   Sparkles,
+  Link,
+  Copy,
 } from 'lucide-react';
 import { StudentStatusRecord } from '../types';
 
@@ -43,6 +45,7 @@ interface StudentTableProps {
   onExportAuditLogsCsv: () => void;
   onExportAllCsvs: () => void;
   onExportSummaryReport: () => void;
+  onOpenAdvancedExport?: () => void;
 }
 
 /**
@@ -103,11 +106,47 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onExportAuditLogsCsv,
   onExportAllCsvs,
   onExportSummaryReport,
+  onOpenAdvancedExport,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [copiedRollNo, setCopiedRollNo] = useState<string | null>(null);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleCopyLink = async (
+    file: { webViewLink?: string; id?: string },
+    rollNo: string
+  ) => {
+    let link = '';
+    if (file.webViewLink && file.webViewLink.startsWith('http')) {
+      link = file.webViewLink;
+    } else if (file.id) {
+      link = `https://drive.google.com/file/d/${file.id}/view?usp=sharing`;
+    }
+
+    if (!link) return;
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = link;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedRollNo(rollNo);
+      setTimeout(() => setCopiedRollNo(null), 2200);
+    } catch (err) {
+      console.error('Copy link failed:', err);
+    }
+  };
 
   const scannedTime = useMemo(
     () => formatScanTimestamp(lastScannedTimestamp),
@@ -330,6 +369,26 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     Separate CSV Exports
                   </div>
 
+                  {/* Advanced Custom Export Option */}
+                  {onOpenAdvancedExport && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenAdvancedExport();
+                        setIsExportMenuOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-purple-900/90 to-blue-900/90 hover:from-purple-800 hover:to-blue-800 text-purple-200 border border-purple-700/60 flex items-center justify-between transition cursor-pointer my-1 shadow-md"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+                        Custom Labels & 2-Sheet Export
+                      </span>
+                      <span className="text-[10px] bg-purple-950 text-purple-300 px-1.5 py-0.5 rounded font-mono font-bold">
+                        Advanced
+                      </span>
+                    </button>
+                  )}
+
                   {/* Export All CSVs */}
                   <button
                     type="button"
@@ -416,8 +475,22 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               )}
             </div>
 
+            {/* Advanced Export Button */}
+            {onOpenAdvancedExport && (
+              <button
+                type="button"
+                onClick={onOpenAdvancedExport}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-950/80 hover:bg-purple-900/90 border border-purple-700/80 text-purple-200 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer shadow-md"
+                title="Advanced Export Customizer & 2-Sheet Classification Engine"
+              >
+                <Sparkles className="w-4 h-4 text-purple-300" />
+                <span>Advanced Export</span>
+              </button>
+            )}
+
             {/* Sync Report Text */}
             <button
+              type="button"
               onClick={onExportSummaryReport}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition cursor-pointer"
               title="Export Full Reconciliation Report"
@@ -885,6 +958,28 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="inline-flex items-center gap-1.5">
+                          {firstDriveFile && (firstDriveFile.webViewLink || firstDriveFile.id) && (
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLink(firstDriveFile, student.rollNo)}
+                              className={`p-1.5 rounded-lg transition cursor-pointer touch-manipulation ${
+                                copiedRollNo === student.rollNo
+                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-700 shadow-sm'
+                                  : 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800'
+                              }`}
+                              title={
+                                copiedRollNo === student.rollNo
+                                  ? 'Public link copied to clipboard!'
+                                  : 'Copy Public Drive Shareable Link'
+                              }
+                            >
+                              {copiedRollNo === student.rollNo ? (
+                                <Check className="w-4 h-4 text-emerald-400" />
+                              ) : (
+                                <Link className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
                           {firstDriveFile?.webViewLink && firstDriveFile.webViewLink !== '#' && (
                             <a
                               href={firstDriveFile.webViewLink}
@@ -1095,25 +1190,51 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 </div>
 
                 {/* Bottom Actions */}
-                <div className="flex items-center justify-between pt-1">
-                  {firstDriveFile?.webViewLink && firstDriveFile.webViewLink !== '#' ? (
-                    <a
-                      href={firstDriveFile.webViewLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-400 hover:underline flex items-center gap-1"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      Open in Drive
-                    </a>
-                  ) : (
-                    <span className="text-xs text-slate-600">No Drive link</span>
-                  )}
+                <div className="flex items-center justify-between pt-1 gap-2">
+                  <div className="flex items-center gap-2">
+                    {firstDriveFile && (firstDriveFile.webViewLink || firstDriveFile.id) && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyLink(firstDriveFile, student.rollNo)}
+                        className={`text-[11px] font-semibold px-2 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                          copiedRollNo === student.rollNo
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-700'
+                            : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {copiedRollNo === student.rollNo ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Link className="w-3 h-3 text-blue-400" />
+                            <span>Copy Link</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {firstDriveFile?.webViewLink && firstDriveFile.webViewLink !== '#' ? (
+                      <a
+                        href={firstDriveFile.webViewLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-400 hover:underline flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Open
+                      </a>
+                    ) : (
+                      !firstDriveFile && <span className="text-xs text-slate-600">No Drive link</span>
+                    )}
+                  </div>
 
                   <button
                     type="button"
                     onClick={() => onOpenDetails(student)}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-lg transition cursor-pointer touch-manipulation"
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-lg transition cursor-pointer touch-manipulation shrink-0"
                   >
                     View Details ({totalCerts})
                   </button>

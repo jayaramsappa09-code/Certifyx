@@ -46,6 +46,10 @@ import {
 } from './services/csvExportService';
 import { listCertificateFilesInFolder } from './services/googleDriveService';
 import { readSpreadsheetValues } from './services/googleSheetsService';
+import {
+  subscribeToStudentStatusesRealtime,
+  broadcastStudentStatusUpdate,
+} from './services/supabaseClient';
 import { runSyncEngine, SyncEngineResult } from './services/syncEngine';
 import { FIXED_CLASS_ROSTER } from './data/classRoster';
 import {
@@ -65,6 +69,7 @@ import {
 // Components
 import { Header } from './components/Header';
 import { DashboardStats } from './components/DashboardStats';
+import { StatusDistributionChart } from './components/StatusDistributionChart';
 import { StudentTable } from './components/StudentTable';
 import { StudentDetailModal } from './components/StudentDetailModal';
 import { ManualReviewQueue } from './components/ManualReviewQueue';
@@ -80,6 +85,7 @@ import { GoogleConnectModal } from './components/GoogleConnectModal';
 import { SheetSyncProofModal } from './components/SheetSyncProofModal';
 import { GlobalSyncProgressBar, SyncProgressState } from './components/GlobalSyncProgressBar';
 import { OfflinePendingUpdatesModal } from './components/OfflinePendingUpdatesModal';
+import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
@@ -115,6 +121,7 @@ export default function App() {
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<StudentStatusRecord | null>(null);
   const [showSyncReportModal, setShowSyncReportModal] = useState(false);
+  const [showAdvancedExportModal, setShowAdvancedExportModal] = useState(false);
   const [showFirstSyncPreviewModal, setShowFirstSyncPreviewModal] = useState(false);
   const [pendingFirstSyncResult, setPendingFirstSyncResult] = useState<SyncEngineResult | null>(null);
   const [showSetupWizardModal, setShowSetupWizardModal] = useState(false);
@@ -204,6 +211,54 @@ export default function App() {
     setGlobalBanner({ message, type });
     setTimeout(() => setGlobalBanner(null), 4000);
   };
+
+  // Effect: Subscribe to Supabase Realtime Postgres Changes & Broadcasts
+  useEffect(() => {
+    const { unsubscribe } = subscribeToStudentStatusesRealtime(
+      (payload) => {
+        if (!payload.rollNo) return;
+
+        setStudentStatuses((prev) =>
+          prev.map((s) => {
+            if (s.rollNo === payload.rollNo) {
+              const updatedDriveUploaded =
+                typeof payload.driveUploaded !== 'undefined' ? payload.driveUploaded : s.driveUploaded;
+              const updatedSheetUpdated =
+                typeof payload.sheetUpdated !== 'undefined' ? payload.sheetUpdated : s.sheetUpdated;
+              const updatedSubmitted =
+                typeof payload.submitted !== 'undefined' ? payload.submitted : s.submitted;
+
+              let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'NOT STARTED';
+              if (updatedDriveUploaded && updatedSheetUpdated && updatedSubmitted) {
+                nextOverall = 'COMPLETED';
+              } else if (updatedDriveUploaded || updatedSheetUpdated || updatedSubmitted) {
+                nextOverall = 'PENDING';
+              }
+
+              return {
+                ...s,
+                driveUploaded: updatedDriveUploaded,
+                sheetUpdated: updatedSheetUpdated,
+                submitted: updatedSubmitted,
+                overallStatus: payload.overallStatus || nextOverall,
+                lastUpdated: payload.updatedAt || new Date().toISOString(),
+              };
+            }
+            return s;
+          })
+        );
+
+        showToast(
+          `⚡ Supabase Realtime: Student ${payload.rollNo} status modified by administrator (${payload.updatedBy || 'admin'}).`,
+          'info'
+        );
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Sync Pending Updates when coming back online or when manually triggered
   const handleSyncPendingUpdates = async () => {
@@ -766,6 +821,14 @@ export default function App() {
       `Marked ${rollNo} as ${nextVal ? 'SUBMITTED' : 'NOT SUBMITTED'}`,
       'STATUS'
     );
+
+    // Broadcast update via Supabase Realtime
+    broadcastStudentStatusUpdate({
+      rollNo,
+      submitted: nextVal,
+      updatedBy: currentUser?.email || 'admin',
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   // Toggle Drive Uploaded Status manually (Admin Override)
@@ -814,6 +877,14 @@ export default function App() {
     );
 
     showToast(`Updated Drive status for ${rollNo} to ${nextVal ? 'TRUE' : 'FALSE'}.`, 'success');
+
+    // Broadcast update via Supabase Realtime
+    broadcastStudentStatusUpdate({
+      rollNo,
+      driveUploaded: nextVal,
+      updatedBy: currentUser?.email || 'admin',
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   // Toggle Sheet Updated Status manually (Admin Override)
@@ -862,6 +933,14 @@ export default function App() {
     );
 
     showToast(`Updated Sheet status for ${rollNo} to ${nextVal ? 'TRUE' : 'FALSE'}.`, 'success');
+
+    // Broadcast update via Supabase Realtime
+    broadcastStudentStatusUpdate({
+      rollNo,
+      sheetUpdated: nextVal,
+      updatedBy: currentUser?.email || 'admin',
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   // Batch Toggle Submitted Status for Multiple Selected Students
@@ -1179,6 +1258,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
   const submittedCount = studentStatuses.filter((s) => s.submitted).length;
   const completedCount = studentStatuses.filter((s) => s.overallStatus === 'COMPLETED').length;
   const pendingCount = studentStatuses.filter((s) => s.overallStatus === 'PENDING').length;
+  const notStartedCount = studentStatuses.filter((s) => s.overallStatus === 'NOT STARTED').length;
   const totalCertsFound = studentStatuses.reduce((acc, s) => acc + s.certificates.length, 0);
   const totalReviewItems = unidentifiedFiles.length + outsideClassFiles.length + ambiguousCertFiles.length + duplicateFiles.length;
 
@@ -1324,6 +1404,16 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               onSelectFilter={setActiveFilter}
             />
 
+            {/* Status Distribution Recharts Bar Chart */}
+            <StatusDistributionChart
+              totalStudents={67}
+              completedCount={completedCount}
+              pendingCount={pendingCount}
+              notStartedCount={notStartedCount}
+              activeFilter={activeFilter}
+              onSelectFilter={setActiveFilter}
+            />
+
             {/* Student Table */}
             <StudentTable
               students={studentStatuses}
@@ -1350,6 +1440,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               onExportAuditLogsCsv={handleExportAuditLogsCsv}
               onExportAllCsvs={handleExportAllCsvs}
               onExportSummaryReport={handleExportSummaryReport}
+              onOpenAdvancedExport={() => setShowAdvancedExportModal(true)}
             />
           </div>
         )}
@@ -1486,6 +1577,15 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
           onRefreshLiveProof={handleRefreshLiveSheetProof}
           isRefreshing={isRefreshingProof}
           onManualAssignRollNo={handleManualAssignSheetRow}
+        />
+      )}
+
+      {/* Advanced Export & Analysis Modal */}
+      {showAdvancedExportModal && (
+        <AdvancedExportModal
+          isOpen={showAdvancedExportModal}
+          onClose={() => setShowAdvancedExportModal(false)}
+          students={studentStatuses}
         />
       )}
 

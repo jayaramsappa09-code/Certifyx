@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   X,
   ExternalLink,
@@ -15,6 +15,8 @@ import {
   Layers,
   FileText,
   SlidersHorizontal,
+  Link,
+  Check,
 } from 'lucide-react';
 import { StudentStatusRecord, DriveCertificateFile } from '../types';
 import { CertificateThumbnail } from './ManualReviewQueue';
@@ -34,6 +36,8 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   onToggleDriveUploaded,
   onToggleSheetUpdated,
 }) => {
+  const [copiedFileId, setCopiedFileId] = useState<string | null>(null);
+
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -41,6 +45,37 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
+
+  const handleCopyLink = async (file: DriveCertificateFile) => {
+    let link = '';
+    if (file.webViewLink && file.webViewLink.startsWith('http')) {
+      link = file.webViewLink;
+    } else if (file.id) {
+      link = `https://drive.google.com/file/d/${file.id}/view?usp=sharing`;
+    }
+
+    if (!link) return;
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = link;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedFileId(file.id);
+      setTimeout(() => setCopiedFileId(null), 2200);
+    } catch (err) {
+      console.error('Copy link failed:', err);
+    }
+  };
 
   if (!student) return null;
 
@@ -282,17 +317,44 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                           )}
                         </div>
 
-                        {file.webViewLink && file.webViewLink !== '#' && (
-                          <a
-                            href={file.webViewLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/25 text-blue-400 border border-blue-500/30 text-xs font-medium rounded-xl transition shrink-0"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            <span>Open in Drive</span>
-                          </a>
-                        )}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {file && (file.webViewLink || file.id) && (
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLink(file)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 border text-xs font-semibold rounded-xl transition cursor-pointer ${
+                                copiedFileId === file.id
+                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-700 shadow-sm'
+                                  : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700'
+                              }`}
+                              title="Copy direct shareable Google Drive link to clipboard"
+                            >
+                              {copiedFileId === file.id ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Copied Link!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Link className="w-3.5 h-3.5 text-blue-400" />
+                                  <span>Copy Public Link</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+
+                          {file.webViewLink && file.webViewLink !== '#' && (
+                            <a
+                              href={file.webViewLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/25 text-blue-400 border border-blue-500/30 text-xs font-medium rounded-xl transition shrink-0"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>Open in Drive</span>
+                            </a>
+                          )}
+                        </div>
                       </div>
 
                       <div className="text-xs text-slate-300 font-mono break-all bg-slate-900/60 p-2 rounded-lg border border-slate-800/50 flex items-center justify-between gap-2">
