@@ -290,8 +290,10 @@ export function addAuditLog(
 // 7. Manual File Overrides (Assign roll number or certificate type to an unidentified file)
 export interface ManualFileOverride {
   fileId: string;
+  filename?: string;
   assignedRollNo?: string;
   assignedCertType?: string;
+  assignedCertTitle?: string;
   resolvedAt: string;
 }
 
@@ -307,10 +309,35 @@ export function getManualFileOverrides(): Record<string, ManualFileOverride> {
 export function saveManualFileOverride(override: ManualFileOverride): void {
   try {
     const overrides = getManualFileOverrides();
-    overrides[override.fileId] = override;
+    if (override.fileId) overrides[override.fileId] = override;
+    if (override.filename) {
+      overrides[override.filename] = override;
+      overrides[override.filename.toLowerCase().trim()] = override;
+    }
     localStorage.setItem(STORAGE_KEYS.MANUAL_OVERRIDES, JSON.stringify(overrides));
   } catch (e) {
     console.error('Failed to save manual file override:', e);
+  }
+}
+
+export function saveBatchManualFileOverrides(
+  overrideList: Array<ManualFileOverride & { filename?: string }>
+): void {
+  try {
+    const overrides = getManualFileOverrides();
+    for (const item of overrideList) {
+      if (item.fileId) {
+        overrides[item.fileId] = item;
+      }
+      if (item.filename) {
+        const cleanName = item.filename.trim();
+        overrides[cleanName] = item;
+        overrides[cleanName.toLowerCase()] = item;
+      }
+    }
+    localStorage.setItem(STORAGE_KEYS.MANUAL_OVERRIDES, JSON.stringify(overrides));
+  } catch (e) {
+    console.error('Failed to save batch manual file overrides:', e);
   }
 }
 

@@ -86,6 +86,7 @@ import { SheetSyncProofModal } from './components/SheetSyncProofModal';
 import { GlobalSyncProgressBar, SyncProgressState } from './components/GlobalSyncProgressBar';
 import { OfflinePendingUpdatesModal } from './components/OfflinePendingUpdatesModal';
 import { AdvancedExportModal } from './components/AdvancedExportModal';
+import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
 import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
@@ -96,6 +97,7 @@ export default function App() {
   const [isAccessDenied, setIsAccessDenied] = useState(false);
   const [showGoogleConnectModal, setShowGoogleConnectModal] = useState(false);
   const [googleConnectError, setGoogleConnectError] = useState<string | null>(null);
+  const [authAlertBanner, setAuthAlertBanner] = useState<string | null>(null);
 
   // App settings & persistence
   const [settings, setSettings] = useState<AppSettings>(getAppSettings());
@@ -122,6 +124,7 @@ export default function App() {
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<StudentStatusRecord | null>(null);
   const [showSyncReportModal, setShowSyncReportModal] = useState(false);
   const [showAdvancedExportModal, setShowAdvancedExportModal] = useState(false);
+  const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
   const [showFirstSyncPreviewModal, setShowFirstSyncPreviewModal] = useState(false);
   const [pendingFirstSyncResult, setPendingFirstSyncResult] = useState<SyncEngineResult | null>(null);
   const [showSetupWizardModal, setShowSetupWizardModal] = useState(false);
@@ -483,7 +486,9 @@ export default function App() {
             handleTokenExpiry();
             setAccessToken(null);
             pendingPostAuthActionRef.current = () => handleSyncNow();
-            setGoogleConnectError('Google authorization expired while reading Drive. Please re-authenticate.');
+            const msg = 'Google authorization expired or invalid while reading Drive. Please re-authenticate.';
+            setGoogleConnectError(msg);
+            setAuthAlertBanner(msg);
             setShowGoogleConnectModal(true);
           }
           errorMessages.push(`Google Drive: ${err.message}`);
@@ -541,7 +546,9 @@ export default function App() {
             handleTokenExpiry();
             setAccessToken(null);
             pendingPostAuthActionRef.current = () => handleSyncNow();
-            setGoogleConnectError('Google authorization expired while reading Sheets. Please re-authenticate.');
+            const msg = 'Google authorization expired or invalid while reading Sheets. Please re-authenticate.';
+            setGoogleConnectError(msg);
+            setAuthAlertBanner(msg);
             setShowGoogleConnectModal(true);
           }
           errorMessages.push(`Google Sheets: ${err.message}`);
@@ -1305,18 +1312,32 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* Connection Notice if Not Configured */}
-        {!accessToken && (
-          <div className="bg-gradient-to-r from-blue-950/70 via-indigo-950/50 to-slate-900 border border-blue-800/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
+        {/* Connection or Re-authentication Notice */}
+        {(!accessToken || authAlertBanner || googleConnectError) && (
+          <div
+            className={`border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg transition ${
+              authAlertBanner || googleConnectError
+                ? 'bg-gradient-to-r from-amber-950/90 via-slate-900 to-rose-950/80 border-amber-500/80'
+                : 'bg-gradient-to-r from-blue-950/70 via-indigo-950/50 to-slate-900 border-blue-800/80'
+            }`}
+          >
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    authAlertBanner || googleConnectError ? 'bg-amber-400 animate-ping' : 'bg-blue-400 animate-pulse'
+                  }`}
+                ></span>
                 <h3 className="text-sm font-bold text-white">
-                  Google Workspace Integration Ready
+                  {authAlertBanner || googleConnectError
+                    ? 'Google Authorization Session Expired or Required'
+                    : 'Google Workspace Integration Ready'}
                 </h3>
               </div>
               <p className="text-xs text-slate-300">
-                Connect your Google account to automatically read certificates from your Google Drive folder and match rows in your Google Sheet.
+                {authAlertBanner || googleConnectError
+                  ? authAlertBanner || googleConnectError
+                  : 'Connect your Google account to automatically read certificates from your Google Drive folder and match rows in your Google Sheet.'}
               </p>
             </div>
 
@@ -1328,10 +1349,19 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                 Setup Wizard
               </button>
               <button
-                onClick={handleGoogleLogin}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
+                onClick={() => {
+                  setAuthAlertBanner(null);
+                  setGoogleConnectError(null);
+                  handleGoogleLogin(true);
+                }}
+                className={`px-4 py-2 text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-lg cursor-pointer flex items-center gap-1.5 ${
+                  authAlertBanner || googleConnectError
+                    ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/30'
+                    : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
+                }`}
               >
-                Connect Google Account
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>{authAlertBanner || googleConnectError ? 'Re-authenticate Account' : 'Connect Google Account'}</span>
               </button>
             </div>
           </div>
@@ -1441,6 +1471,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               onExportAllCsvs={handleExportAllCsvs}
               onExportSummaryReport={handleExportSummaryReport}
               onOpenAdvancedExport={() => setShowAdvancedExportModal(true)}
+              onOpenBulkMapping={() => setShowBulkMappingModal(true)}
             />
           </div>
         )}
@@ -1586,6 +1617,17 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
           isOpen={showAdvancedExportModal}
           onClose={() => setShowAdvancedExportModal(false)}
           students={studentStatuses}
+        />
+      )}
+
+      {/* Bulk CSV Filename Mapping Uploader Modal */}
+      {showBulkMappingModal && (
+        <BulkMappingUploadModal
+          isOpen={showBulkMappingModal}
+          onClose={() => setShowBulkMappingModal(false)}
+          unidentifiedFiles={unidentifiedFiles}
+          onRefreshAfterResolution={handleRefreshAfterResolution}
+          userEmail={currentUser?.email || 'admin'}
         />
       )}
 

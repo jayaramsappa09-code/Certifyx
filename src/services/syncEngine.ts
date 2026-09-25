@@ -313,7 +313,10 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     let matchMethod: DriveCertificateFile['matchMethod'] = undefined;
 
     // Check 1: Manual admin override
-    const override = manualOverrides[file.id];
+    const override =
+      manualOverrides[file.id] ||
+      manualOverrides[file.name] ||
+      manualOverrides[file.name.toLowerCase().trim()];
     if (override?.assignedRollNo) {
       detectedRoll = override.assignedRollNo;
       detectedType = override.assignedCertType;

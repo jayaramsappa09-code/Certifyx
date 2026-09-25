@@ -17,11 +17,13 @@ import {
   X,
   ListChecks,
   ChevronDown,
+  ChevronRight,
   HardDrive,
   Award,
   Layers,
   FileCheck,
   Sparkles,
+  Upload,
   Link,
   Copy,
   ArrowUpDown,
@@ -50,6 +52,7 @@ interface StudentTableProps {
   onExportAllCsvs: () => void;
   onExportSummaryReport: () => void;
   onOpenAdvancedExport?: () => void;
+  onOpenBulkMapping?: () => void;
 }
 
 /**
@@ -111,16 +114,30 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onExportAllCsvs,
   onExportSummaryReport,
   onOpenAdvancedExport,
+  onOpenBulkMapping,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [copiedRollNo, setCopiedRollNo] = useState<string | null>(null);
+  const [expandedRollNos, setExpandedRollNos] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<
     'rollNo' | 'name' | 'overallStatus' | 'driveUploaded' | 'sheetUpdated' | 'submitted'
   >('rollNo');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleToggleExpand = (rollNo: string) => {
+    setExpandedRollNos((prev) => {
+      const next = new Set(prev);
+      if (next.has(rollNo)) {
+        next.delete(rollNo);
+      } else {
+        next.add(rollNo);
+      }
+      return next;
+    });
+  };
 
   const handleSort = (
     field: 'rollNo' | 'name' | 'overallStatus' | 'driveUploaded' | 'sheetUpdated' | 'submitted'
@@ -609,6 +626,19 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               )}
             </div>
 
+            {/* Bulk CSV Mapping Button */}
+            {onOpenBulkMapping && (
+              <button
+                type="button"
+                onClick={onOpenBulkMapping}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-950/90 to-blue-950/90 hover:from-purple-900 hover:to-blue-900 border border-purple-700/80 text-purple-200 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer shadow-md"
+                title="Bulk-upload custom CSV filename mapping to resolve unidentified files directly into student records"
+              >
+                <Upload className="w-4 h-4 text-purple-300" />
+                <span>Bulk CSV Mapping</span>
+              </button>
+            )}
+
             {/* Advanced Export Button */}
             {onOpenAdvancedExport && (
               <button
@@ -1027,44 +1057,57 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   const hasDriveFiles = student.driveFiles.length > 0;
                   const firstDriveFile = hasDriveFiles ? student.driveFiles[0] : null;
                   const isSelected = selectedRollNos.has(student.rollNo);
+                  const isExpanded = expandedRollNos.has(student.rollNo);
                   const totalCerts = student.certificates.length || student.driveFiles.length;
 
                   return (
-                    <tr
-                      key={student.rollNo}
-                      className={`hover:bg-slate-800/40 transition group ${
-                        isSelected ? 'bg-purple-950/20' : ''
-                      }`}
-                    >
-                      {/* Selection Checkbox */}
-                      <td className="py-3.5 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSelectStudent(student.rollNo)}
-                          className="inline-flex items-center justify-center w-5 h-5 rounded transition text-purple-400 hover:text-purple-300 cursor-pointer"
-                          title={`Select ${student.rollNo}`}
-                        >
-                          {isSelected ? (
-                            <CheckSquare className="w-5 h-5 text-purple-400" />
-                          ) : (
-                            <Square className="w-5 h-5 text-slate-600 group-hover:text-slate-400" />
-                          )}
-                        </button>
-                      </td>
+                    <React.Fragment key={student.rollNo}>
+                      <tr
+                        className={`hover:bg-slate-800/40 transition group ${
+                          isSelected ? 'bg-purple-950/20' : ''
+                        } ${isExpanded ? 'bg-slate-900/80 border-b border-purple-800/40' : ''}`}
+                      >
+                        {/* Selection Checkbox */}
+                        <td className="py-3.5 px-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSelectStudent(student.rollNo)}
+                            className="inline-flex items-center justify-center w-5 h-5 rounded transition text-purple-400 hover:text-purple-300 cursor-pointer"
+                            title={`Select ${student.rollNo}`}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-5 h-5 text-purple-400" />
+                            ) : (
+                              <Square className="w-5 h-5 text-slate-600 group-hover:text-slate-400" />
+                            )}
+                          </button>
+                        </td>
 
-                      {/* Roll No */}
-                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-200 tracking-wide text-xs sm:text-sm">
-                        <span className="px-2 py-0.5 rounded bg-blue-950/60 border border-blue-900/60 text-blue-300">
-                          {student.rollNo}
-                        </span>
-                      </td>
+                        {/* Roll No */}
+                        <td className="py-3.5 px-4 font-mono font-semibold text-slate-200 tracking-wide text-xs sm:text-sm">
+                          <span className="px-2 py-0.5 rounded bg-blue-950/60 border border-blue-900/60 text-blue-300">
+                            {student.rollNo}
+                          </span>
+                        </td>
 
-                      {/* Name */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-semibold text-slate-100">
-                          {student.name}
-                        </div>
-                      </td>
+                        {/* Name */}
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-slate-100 flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleExpand(student.rollNo)}
+                              className="p-1 text-slate-500 hover:text-purple-300 hover:bg-slate-800 rounded transition cursor-pointer"
+                              title={isExpanded ? "Collapse certificates" : "Expand individual certificate details"}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-purple-400" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4" />
+                              )}
+                            </button>
+                            <span>{student.name}</span>
+                          </div>
+                        </td>
 
                       {/* Unified All Certificates Column (Showing all certificates uploaded by this single student) */}
                       <td className="py-3.5 px-4">
@@ -1245,7 +1288,74 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                         </div>
                       </td>
                     </tr>
-                  );
+
+                    {/* Expanded Row Certificate Breakdown */}
+                    {isExpanded && (
+                      <tr className="bg-slate-950/90 border-b border-purple-900/60">
+                        <td colSpan={9} className="p-4">
+                          <div className="bg-slate-900/90 border border-purple-800/50 rounded-2xl p-4 space-y-3 shadow-inner">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Award className="w-4 h-4 text-purple-400" />
+                                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                                  Individual Certificate Tracking Breakdown ({student.rollNo} - {student.name})
+                                </h4>
+                              </div>
+                              <span className="text-[10px] font-mono px-2 py-0.5 bg-purple-950 text-purple-300 border border-purple-800 rounded-md">
+                                {totalCerts} Total Item{totalCerts === 1 ? '' : 's'} Tracked
+                              </span>
+                            </div>
+
+                            {student.certificates.length === 0 && student.driveFiles.length === 0 ? (
+                              <p className="text-xs text-slate-500 italic">No certificates recorded for this student.</p>
+                            ) : (
+                              <div className="divide-y divide-slate-800/80 border border-slate-800 rounded-xl overflow-hidden">
+                                {student.certificates.map((certTitle, cIdx) => {
+                                  const matchingFile = student.driveFiles[cIdx] || student.driveFiles[0];
+                                  return (
+                                    <div
+                                      key={cIdx}
+                                      className="p-2.5 bg-slate-950/70 hover:bg-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs transition"
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <span className="w-6 h-6 rounded-lg bg-purple-950 text-purple-300 font-mono font-bold text-[10px] flex items-center justify-center shrink-0 border border-purple-800">
+                                          #{cIdx + 1}
+                                        </span>
+                                        <div>
+                                          <span className="font-bold text-white block">{certTitle}</span>
+                                          <span className="text-[10px] text-slate-400 font-mono">
+                                            Roll No: {student.rollNo} • Verified Student Certificate
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {matchingFile && (
+                                        <div className="flex items-center gap-2 text-[11px]">
+                                          <span className="text-[10px] text-slate-400 truncate max-w-[200px]">
+                                            📄 {matchingFile.name}
+                                          </span>
+                                          <a
+                                            href={matchingFile.webViewLink || `https://drive.google.com/file/d/${matchingFile.id}/view`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="px-2.5 py-1 rounded-lg bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800/80 flex items-center gap-1 font-mono transition text-[10px] font-semibold"
+                                          >
+                                            <ExternalLink className="w-3 h-3" />
+                                            <span>Open Drive File</span>
+                                          </a>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
                 })
               )}
             </tbody>

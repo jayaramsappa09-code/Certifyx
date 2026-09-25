@@ -20,9 +20,11 @@ import {
   ZoomIn,
   Sparkles,
   Search,
+  Upload,
 } from 'lucide-react';
 import { DriveCertificateFile } from '../types';
 import { FIXED_CLASS_ROSTER } from '../data/classRoster';
+import { BulkMappingUploadModal } from './BulkMappingUploadModal';
 import {
   saveManualFileOverride,
   saveDuplicateResolution,
@@ -141,6 +143,7 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
     Record<string, string>
   >({});
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
 
   // Modal Preview state
   const [previewFile, setPreviewFile] = useState<DriveCertificateFile | null>(
@@ -372,8 +375,19 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
           </button>
         </div>
 
-        {/* Search & Layout View Mode Toggle */}
+        {/* Search, Bulk CSV Upload & Layout View Mode Toggle */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowBulkMappingModal(true)}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-purple-600/30 flex items-center gap-1.5 shrink-0 cursor-pointer"
+            title="Bulk-upload a custom CSV filename mapping to resolve unidentified files directly into student records"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Bulk CSV Mapping</span>
+            <span className="sm:hidden">Bulk CSV</span>
+          </button>
+
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
             <input
@@ -1011,6 +1025,15 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
           </div>
         </div>
       )}
+
+      {/* Bulk CSV Mapping Upload Modal */}
+      <BulkMappingUploadModal
+        isOpen={showBulkMappingModal}
+        onClose={() => setShowBulkMappingModal(false)}
+        unidentifiedFiles={unidentifiedFiles}
+        onRefreshAfterResolution={onRefreshAfterResolution}
+        userEmail={userEmail}
+      />
     </div>
   );
 };
