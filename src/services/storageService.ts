@@ -9,8 +9,10 @@ import {
   SheetRowRecord,
   PendingUpdateRecord,
   ToggleFieldType,
+  Student,
 } from '../types';
 import { DEFAULT_ADMIN_EMAILS } from './firebaseAuth';
+import { FIXED_CLASS_ROSTER } from '../data/classRoster';
 
 const STORAGE_KEYS = {
   SUBMITTED_STATUS: 'ccam_submitted_status_map',
@@ -26,6 +28,7 @@ const STORAGE_KEYS = {
   LAST_SYNCED_DATA: 'ccam_last_synced_data',
   SHEET_PROOF: 'ccam_last_sheet_sync_proof',
   PENDING_UPDATES: 'ccam_offline_pending_updates',
+  DYNAMIC_ROSTER: 'ccam_dynamic_roster',
 };
 
 // 1. Submitted status (Map: normalized rollNo -> boolean)
@@ -517,6 +520,26 @@ export function updatePendingUpdateStatus(
     if (error) item.error = error;
     if (status === 'FAILED') item.retryCount = (item.retryCount || 0) + 1;
     savePendingUpdates(updates);
+  }
+}
+
+// 12. Dynamic Class Roster CRUD
+export function getDynamicRoster(): Student[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DYNAMIC_ROSTER);
+    if (!raw) return [...FIXED_CLASS_ROSTER];
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to read dynamic roster:', e);
+    return [...FIXED_CLASS_ROSTER];
+  }
+}
+
+export function saveDynamicRoster(roster: Student[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.DYNAMIC_ROSTER, JSON.stringify(roster));
+  } catch (e) {
+    console.error('Failed to save dynamic roster:', e);
   }
 }
 

@@ -29,6 +29,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { StudentStatusRecord } from '../types';
 
@@ -53,6 +55,9 @@ interface StudentTableProps {
   onExportSummaryReport: () => void;
   onOpenAdvancedExport?: () => void;
   onOpenBulkMapping?: () => void;
+  onAddRosterStudent?: (rollNo: string, name: string) => void;
+  onEditRosterStudent?: (rollNo: string, newName: string) => void;
+  onDeleteRosterStudent?: (rollNo: string) => void;
 }
 
 /**
@@ -115,6 +120,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onExportSummaryReport,
   onOpenAdvancedExport,
   onOpenBulkMapping,
+  onAddRosterStudent,
+  onEditRosterStudent,
+  onDeleteRosterStudent,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
@@ -126,6 +134,63 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   >('rollNo');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Student roster mutation state
+  const [showRosterModal, setShowRosterModal] = useState(false);
+  const [rosterModalMode, setRosterModalMode] = useState<'ADD' | 'EDIT'>('ADD');
+  const [modalRollNo, setModalRollNo] = useState('');
+  const [modalName, setModalName] = useState('');
+  const [rosterError, setRosterError] = useState<string | null>(null);
+
+  const handleOpenAddRosterModal = () => {
+    setRosterModalMode('ADD');
+    setModalRollNo('');
+    setModalName('');
+    setRosterError(null);
+    setShowRosterModal(true);
+  };
+
+  const handleOpenEditRosterModal = (rollNo: string, currentName: string) => {
+    setRosterModalMode('EDIT');
+    setModalRollNo(rollNo);
+    setModalName(currentName);
+    setRosterError(null);
+    setShowRosterModal(true);
+  };
+
+  const handleSaveRosterStudent = () => {
+    if (!modalRollNo.trim() || !modalName.trim()) {
+      setRosterError('Both Roll Number and Student Name are required.');
+      return;
+    }
+    if (rosterModalMode === 'ADD') {
+      if (onAddRosterStudent) {
+        try {
+          onAddRosterStudent(modalRollNo, modalName);
+          setShowRosterModal(false);
+        } catch (e: any) {
+          setRosterError(e.message || 'Error adding student.');
+        }
+      }
+    } else {
+      if (onEditRosterStudent) {
+        try {
+          onEditRosterStudent(modalRollNo, modalName);
+          setShowRosterModal(false);
+        } catch (e: any) {
+          setRosterError(e.message || 'Error updating student.');
+        }
+      }
+    }
+  };
+
+  const handleExecuteDeleteRosterStudent = (rollNo: string, name: string) => {
+    if (!onDeleteRosterStudent) return;
+    const confirmed = window.confirm(`Are you absolutely sure you want to permanently delete student ${name} (${rollNo}) from the roster? This will clear their verification state.`);
+    if (confirmed) {
+      onDeleteRosterStudent(rollNo);
+    }
+  };
 
   const handleToggleExpand = (rollNo: string) => {
     setExpandedRollNos((prev) => {
@@ -626,6 +691,19 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               )}
             </div>
 
+            {/* Add Student Button */}
+            {onAddRosterStudent && (
+              <button
+                type="button"
+                onClick={handleOpenAddRosterModal}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-blue-950 to-indigo-950 hover:from-blue-900 hover:to-indigo-900 border border-blue-500/40 text-blue-200 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer shadow-md"
+                title="Add a new student manually to the active class roster"
+              >
+                <Plus className="w-4 h-4 text-blue-400" />
+                <span>Add Student</span>
+              </button>
+            )}
+
             {/* Bulk CSV Mapping Button */}
             {onOpenBulkMapping && (
               <button
@@ -1106,12 +1184,18 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   return (
                     <React.Fragment key={student.rollNo}>
                       <tr
-                        className={`hover:bg-slate-800/40 transition group ${
+                        className={`student-row-item transition-all duration-200 hover:bg-slate-800/80 hover:shadow-lg hover:shadow-slate-950/40 group ${
                           isSelected ? 'bg-purple-950/20' : ''
                         } ${isExpanded ? 'bg-slate-900/80 border-b border-purple-800/40' : ''}`}
                       >
-                        {/* Selection Checkbox */}
-                        <td className="py-3.5 px-4 text-center">
+                        {/* Selection Checkbox with status color left-border indicator */}
+                        <td className={`py-3.5 px-4 text-center border-l-4 transition-colors duration-150 ${
+                          student.overallStatus === 'COMPLETED'
+                            ? 'border-l-emerald-500/90'
+                            : student.overallStatus === 'PENDING'
+                            ? 'border-l-amber-500/90'
+                            : 'border-l-red-500/90'
+                        }`}>
                           <button
                             type="button"
                             onClick={() => handleToggleSelectStudent(student.rollNo)}
@@ -1284,9 +1368,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                         )}
                       </td>
 
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="inline-flex items-center gap-1.5">
+                      {/* Actions with Floating Hover Popover */}
+                      <td className="py-3.5 px-4 text-right relative min-w-[200px]">
+                        <div className="inline-flex items-center gap-1.5 transition-all duration-150 group-hover:opacity-0 group-hover:pointer-events-none">
                           {firstDriveFile && (firstDriveFile.webViewLink || firstDriveFile.id) && (
                             <button
                               type="button"
@@ -1328,6 +1412,36 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+                        </div>
+
+                        {/* Popover Hover Quick Actions Toolbar */}
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 pointer-events-none group-hover:pointer-events-auto flex items-center bg-slate-950/95 border border-slate-800 shadow-2xl rounded-xl p-1 gap-1 z-10 border-blue-500/30">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 px-2 font-mono tracking-wider">Quick Actions:</span>
+                          <button
+                            type="button"
+                            onClick={() => onOpenDetails(student)}
+                            className="px-2.5 py-1 bg-blue-950 hover:bg-blue-900 border border-blue-800/40 text-blue-300 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                          >
+                            View
+                          </button>
+                          {onEditRosterStudent && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditRosterModal(student.rollNo, student.name)}
+                              className="px-2.5 py-1 bg-amber-950 hover:bg-amber-900 border border-amber-800/40 text-amber-300 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {onDeleteRosterStudent && (
+                            <button
+                              type="button"
+                              onClick={() => handleExecuteDeleteRosterStudent(student.rollNo, student.name)}
+                              className="px-2.5 py-1 bg-red-950 hover:bg-red-900 border border-red-800/40 text-red-300 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1448,8 +1562,14 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             return (
               <div
                 key={student.rollNo}
-                className={`bg-slate-900 border rounded-2xl p-4 space-y-3 shadow-md transition ${
+                className={`bg-slate-900 border-y border-r border-l-4 rounded-2xl p-4 space-y-3 shadow-md transition ${
                   isSelected ? 'border-purple-500/50 bg-purple-950/20' : 'border-slate-800'
+                } ${
+                  student.overallStatus === 'COMPLETED'
+                    ? 'border-l-emerald-500'
+                    : student.overallStatus === 'PENDING'
+                    ? 'border-l-amber-500'
+                    : 'border-l-red-500'
                 }`}
               >
                 {/* Header: Select Checkbox + Roll No + Status Badge */}
@@ -1627,17 +1747,119 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onOpenDetails(student)}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-lg transition cursor-pointer touch-manipulation shrink-0"
-                  >
-                    View Details ({totalCerts})
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {onEditRosterStudent && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditRosterModal(student.rollNo, student.name)}
+                        className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg border border-slate-800/80 transition cursor-pointer touch-manipulation"
+                        title="Edit student name"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                      </button>
+                    )}
+                    {onDeleteRosterStudent && (
+                      <button
+                        type="button"
+                        onClick={() => handleExecuteDeleteRosterStudent(student.rollNo, student.name)}
+                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg border border-slate-800/80 transition cursor-pointer touch-manipulation"
+                        title="Delete student from roster"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onOpenDetails(student)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 rounded-lg transition cursor-pointer touch-manipulation shrink-0"
+                    >
+                      View Details ({totalCerts})
+                    </button>
+                  </div>
                 </div>
               </div>
             );
           })
+        )}
+        {/* Dynamic Add / Edit Student Roster Modal */}
+        {showRosterModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in animate-duration-150">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-blue-400 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
+                  <span>{rosterModalMode === 'ADD' ? 'Add New Student' : 'Edit Student Details'}</span>
+                </h3>
+                <button
+                  onClick={() => setShowRosterModal(false)}
+                  className="text-slate-500 hover:text-white p-1 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Error Message */}
+              {rosterError && (
+                <div className="p-3 bg-red-950/80 border border-red-800 text-red-200 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{rosterError}</span>
+                </div>
+              )}
+
+              {/* Inputs */}
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    Roll Number:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 25A31A05GB"
+                    value={modalRollNo}
+                    onChange={(e) => setModalRollNo(e.target.value)}
+                    disabled={rosterModalMode === 'EDIT'}
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 font-mono uppercase"
+                  />
+                  {rosterModalMode === 'EDIT' && (
+                    <p className="text-[10px] text-slate-500">Roll Number cannot be changed once created.</p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    Full Student Name:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. SAPPA JAYARAM"
+                    value={modalName}
+                    onChange={(e) => setModalName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 uppercase"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowRosterModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveRosterStudent}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-blue-600/20"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{rosterModalMode === 'ADD' ? 'Add Student' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

@@ -51,7 +51,12 @@ import {
   broadcastStudentStatusUpdate,
 } from './services/supabaseClient';
 import { runSyncEngine, SyncEngineResult } from './services/syncEngine';
-import { FIXED_CLASS_ROSTER } from './data/classRoster';
+import {
+  FIXED_CLASS_ROSTER,
+  addRosterStudent,
+  editRosterStudent,
+  deleteRosterStudent,
+} from './data/classRoster';
 import {
   StudentStatusRecord,
   GoogleDriveFolderConfig,
@@ -838,6 +843,52 @@ export default function App() {
     });
   };
 
+  const refreshLocalSync = useCallback(() => {
+    const cached = getCachedSyncedData();
+    const driveFiles = cached?.driveFiles || [];
+    const sheetRows = cached?.sheetRows || [];
+    const syncResult = runSyncEngine({
+      driveFiles,
+      sheetRows,
+      userEmail: currentUser?.email || 'admin',
+      useSeedDataIfEmpty: driveFiles.length === 0 && sheetRows.length === 0,
+    });
+    applySyncResult(syncResult);
+  }, [currentUser]);
+
+  const handleAddRosterStudent = useCallback((rollNo: string, name: string) => {
+    try {
+      addRosterStudent({ rollNo: rollNo.toUpperCase().trim(), name: name.trim() });
+      addAuditLog('Roster Student Added', currentUser?.email || 'admin', `Added student ${name} (${rollNo})`, 'SETTINGS');
+      showToast(`Successfully added student ${name} to roster!`, 'success');
+      refreshLocalSync();
+    } catch (e: any) {
+      showToast(e.message || 'Failed to add student.', 'error');
+    }
+  }, [currentUser, refreshLocalSync]);
+
+  const handleEditRosterStudent = useCallback((rollNo: string, newName: string) => {
+    try {
+      editRosterStudent(rollNo, newName);
+      addAuditLog('Roster Student Edited', currentUser?.email || 'admin', `Renamed student ${rollNo} to ${newName}`, 'SETTINGS');
+      showToast(`Successfully renamed student to ${newName}!`, 'success');
+      refreshLocalSync();
+    } catch (e: any) {
+      showToast(e.message || 'Failed to rename student.', 'error');
+    }
+  }, [currentUser, refreshLocalSync]);
+
+  const handleDeleteRosterStudent = useCallback((rollNo: string) => {
+    try {
+      deleteRosterStudent(rollNo);
+      addAuditLog('Roster Student Deleted', currentUser?.email || 'admin', `Deleted student ${rollNo}`, 'SETTINGS');
+      showToast(`Successfully deleted student ${rollNo} from roster!`, 'success');
+      refreshLocalSync();
+    } catch (e: any) {
+      showToast(e.message || 'Failed to delete student.', 'error');
+    }
+  }, [currentUser, refreshLocalSync]);
+
   // Toggle Drive Uploaded Status manually (Admin Override)
   const handleToggleDriveUploaded = (rollNo: string, current: boolean) => {
     const nextVal = !current;
@@ -1472,6 +1523,9 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               onExportSummaryReport={handleExportSummaryReport}
               onOpenAdvancedExport={() => setShowAdvancedExportModal(true)}
               onOpenBulkMapping={() => setShowBulkMappingModal(true)}
+              onAddRosterStudent={handleAddRosterStudent}
+              onEditRosterStudent={handleEditRosterStudent}
+              onDeleteRosterStudent={handleDeleteRosterStudent}
             />
           </div>
         )}

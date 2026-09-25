@@ -1,11 +1,10 @@
 import { Student } from '../types';
 
 /**
- * EXACT FIXED CLASS ROSTER (67 STUDENTS ONLY)
+ * EXACT INITIAL FIXED CLASS ROSTER (67 STUDENTS ONLY)
  * As strictly specified in section 7 of the requirements.
- * Under no circumstances should any other student be added to the class roster.
  */
-export const FIXED_CLASS_ROSTER: readonly Student[] = [
+const FIXED_CLASS_ROSTER_STATIC: Student[] = [
   { rollNo: '25A31A05DV', name: 'ADABALA NAVYA RAMYA SREE' },
   { rollNo: '25A31A05DW', name: 'BEVARA PRASANTHI' },
   { rollNo: '25A31A05DX', name: 'CHILLA DEEPTHI' },
@@ -75,11 +74,88 @@ export const FIXED_CLASS_ROSTER: readonly Student[] = [
 ];
 
 /**
+ * FIXED_CLASS_ROSTER is exported as a mutable array reference
+ * that syncEngine and other views can import and loop through.
+ * It is dynamically synchronized with localStorage.
+ */
+export const FIXED_CLASS_ROSTER: Student[] = [];
+
+export function initializeRoster() {
+  FIXED_CLASS_ROSTER.length = 0;
+  try {
+    const raw = localStorage.getItem('ccam_dynamic_roster');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      FIXED_CLASS_ROSTER.push(...parsed);
+      return;
+    }
+  } catch (e) {
+    console.error('Failed to load roster from localStorage:', e);
+  }
+  FIXED_CLASS_ROSTER.push(...FIXED_CLASS_ROSTER_STATIC);
+}
+
+/**
  * Fast lookup map by normalized roll number
  */
-export const ROSTER_MAP = new Map<string, Student>(
-  FIXED_CLASS_ROSTER.map((student) => [student.rollNo.toUpperCase().trim(), student])
-);
+export const ROSTER_MAP = new Map<string, Student>();
+
+export function updateRosterMap() {
+  ROSTER_MAP.clear();
+  FIXED_CLASS_ROSTER.forEach((student) => {
+    ROSTER_MAP.set(student.rollNo.toUpperCase().trim(), student);
+  });
+}
+
+// Perform initial setup
+if (typeof window !== 'undefined') {
+  initializeRoster();
+  updateRosterMap();
+} else {
+  FIXED_CLASS_ROSTER.push(...FIXED_CLASS_ROSTER_STATIC);
+  updateRosterMap();
+}
+
+/**
+ * Dynamic Student Roster Mutators (CRUD Actions)
+ */
+export function addRosterStudent(student: Student): void {
+  const normalizedRoll = student.rollNo.toUpperCase().trim();
+  if (FIXED_CLASS_ROSTER.some(s => s.rollNo.toUpperCase().trim() === normalizedRoll)) {
+    throw new Error(`Student with Roll Number ${student.rollNo} already exists.`);
+  }
+  FIXED_CLASS_ROSTER.push(student);
+  try {
+    localStorage.setItem('ccam_dynamic_roster', JSON.stringify(FIXED_CLASS_ROSTER));
+  } catch {}
+  updateRosterMap();
+}
+
+export function editRosterStudent(rollNo: string, newName: string): void {
+  const normalizedRoll = rollNo.toUpperCase().trim();
+  const student = FIXED_CLASS_ROSTER.find(s => s.rollNo.toUpperCase().trim() === normalizedRoll);
+  if (!student) {
+    throw new Error(`Student with Roll Number ${rollNo} not found in roster.`);
+  }
+  student.name = newName.trim();
+  try {
+    localStorage.setItem('ccam_dynamic_roster', JSON.stringify(FIXED_CLASS_ROSTER));
+  } catch {}
+  updateRosterMap();
+}
+
+export function deleteRosterStudent(rollNo: string): void {
+  const normalizedRoll = rollNo.toUpperCase().trim();
+  const index = FIXED_CLASS_ROSTER.findIndex(s => s.rollNo.toUpperCase().trim() === normalizedRoll);
+  if (index === -1) {
+    throw new Error(`Student with Roll Number ${rollNo} not found in roster.`);
+  }
+  FIXED_CLASS_ROSTER.splice(index, 1);
+  try {
+    localStorage.setItem('ccam_dynamic_roster', JSON.stringify(FIXED_CLASS_ROSTER));
+  } catch {}
+  updateRosterMap();
+}
 
 /**
  * Normalizes roll number:
