@@ -34,7 +34,7 @@ export const DiscrepancyProofCard: React.FC<DiscrepancyProofCardProps> = ({
 
   const driveCount = student.driveFiles?.length || 0;
   const sheetCount = student.sheetRecords?.length || 0;
-  const hasMismatch = student.countMismatch?.hasMismatch || driveCount !== sheetCount || !student.driveUploaded || !student.sheetUpdated;
+  const hasMismatch = student.countMismatch?.hasMismatch || (driveCount !== sheetCount) || (student.driveUploaded !== student.sheetUpdated);
 
   const handleCopyLink = (file: DriveCertificateFile) => {
     const link = file.webViewLink || (file.id ? `https://drive.google.com/file/d/${file.id}/view` : '');

@@ -111,6 +111,57 @@ import {
 } from './utils/dateFilterUtils';
 import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-react';
 
+const recalculateStudentMismatch = (
+  s: StudentStatusRecord,
+  nextDriveUploaded: boolean,
+  nextSheetUpdated: boolean
+) => {
+  const driveCount = s.driveFiles?.length || 0;
+  const sheetCount = s.sheetRecords?.length || 0;
+  let hasMismatch = false;
+  let mismatchType: 'MORE_IN_SHEET' | 'MORE_IN_DRIVE' | 'EQUAL' = 'EQUAL';
+  let mismatchDesc = '';
+
+  if (driveCount !== sheetCount) {
+    hasMismatch = true;
+    if (driveCount > sheetCount) {
+      mismatchType = 'MORE_IN_DRIVE';
+      const diff = driveCount - sheetCount;
+      mismatchDesc = sheetCount === 0
+        ? `${driveCount} Drive file${driveCount > 1 ? 's' : ''} uploaded, but 0 Google Sheet form responses recorded.`
+        : `${driveCount} Drive file${driveCount > 1 ? 's' : ''} vs ${sheetCount} Sheet response${sheetCount !== 1 ? 's' : ''} (${diff} missing in Google Sheet)`;
+    } else {
+      mismatchType = 'MORE_IN_SHEET';
+      const diff = sheetCount - driveCount;
+      mismatchDesc = driveCount === 0
+        ? `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} logged, but 0 Google Drive PDF files uploaded.`
+        : `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} vs ${driveCount} Drive file${driveCount !== 1 ? 's' : ''} (${diff} missing in Google Drive)`;
+    }
+  } else if (nextDriveUploaded !== nextSheetUpdated) {
+    hasMismatch = true;
+    if (nextDriveUploaded) {
+      mismatchType = 'MORE_IN_DRIVE';
+      mismatchDesc = driveCount > 0
+        ? 'Drive upload is verified, but Google Sheet response is marked as unverified.'
+        : 'Drive upload verified, but Google Sheet response is missing.';
+    } else {
+      mismatchType = 'MORE_IN_SHEET';
+      mismatchDesc = sheetCount > 0
+        ? 'Google Sheet response is recorded, but Google Drive certificate is marked as unverified.'
+        : 'Google Sheet response recorded, but Drive certificate file is missing.';
+    }
+  }
+
+  return {
+    hasMismatch,
+    driveCount,
+    sheetCount,
+    difference: Math.abs(driveCount - sheetCount),
+    type: mismatchType,
+    description: mismatchDesc,
+  };
+};
+
 export default function App() {
   // Authentication state
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -1065,10 +1116,12 @@ export default function App() {
           } else if (!nextVal && !s.sheetUpdated && !s.submitted) {
             nextOverall = 'NOT STARTED';
           }
+          const updatedMismatch = recalculateStudentMismatch(s, nextVal, s.sheetUpdated);
           return {
             ...s,
             driveUploaded: nextVal,
             overallStatus: nextOverall,
+            countMismatch: updatedMismatch,
           };
         }
         return s;
@@ -1082,10 +1135,12 @@ export default function App() {
       } else if (!nextVal && !selectedStudentForDetail.sheetUpdated && !selectedStudentForDetail.submitted) {
         nextOverall = 'NOT STARTED';
       }
+      const updatedMismatch = recalculateStudentMismatch(selectedStudentForDetail, nextVal, selectedStudentForDetail.sheetUpdated);
       setSelectedStudentForDetail({
         ...selectedStudentForDetail,
         driveUploaded: nextVal,
         overallStatus: nextOverall,
+        countMismatch: updatedMismatch,
       });
     }
 
@@ -1121,10 +1176,12 @@ export default function App() {
           } else if (!s.driveUploaded && !nextVal && !s.submitted) {
             nextOverall = 'NOT STARTED';
           }
+          const updatedMismatch = recalculateStudentMismatch(s, s.driveUploaded, nextVal);
           return {
             ...s,
             sheetUpdated: nextVal,
             overallStatus: nextOverall,
+            countMismatch: updatedMismatch,
           };
         }
         return s;
@@ -1138,10 +1195,12 @@ export default function App() {
       } else if (!selectedStudentForDetail.driveUploaded && !nextVal && !selectedStudentForDetail.submitted) {
         nextOverall = 'NOT STARTED';
       }
+      const updatedMismatch = recalculateStudentMismatch(selectedStudentForDetail, selectedStudentForDetail.driveUploaded, nextVal);
       setSelectedStudentForDetail({
         ...selectedStudentForDetail,
         sheetUpdated: nextVal,
         overallStatus: nextOverall,
+        countMismatch: updatedMismatch,
       });
     }
 
@@ -1241,10 +1300,12 @@ export default function App() {
           } else if (!driveUploaded && !s.sheetUpdated && !s.submitted) {
             nextOverall = 'NOT STARTED';
           }
+          const updatedMismatch = recalculateStudentMismatch(s, driveUploaded, s.sheetUpdated);
           return {
             ...s,
             driveUploaded,
             overallStatus: nextOverall,
+            countMismatch: updatedMismatch,
           };
         }
         return s;
@@ -1284,10 +1345,12 @@ export default function App() {
           } else if (!s.driveUploaded && !sheetUpdated && !s.submitted) {
             nextOverall = 'NOT STARTED';
           }
+          const updatedMismatch = recalculateStudentMismatch(s, s.driveUploaded, sheetUpdated);
           return {
             ...s,
             sheetUpdated,
             overallStatus: nextOverall,
+            countMismatch: updatedMismatch,
           };
         }
         return s;
