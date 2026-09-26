@@ -25,9 +25,9 @@ export function getReadOnlyHeader(title = 'OFFICIAL UNALTERABLE AUDIT EXPORT REC
 }
 
 /**
- * Utility to trigger CSV file download with UTF-8 BOM and Read-Only Protection Header.
+ * Utility to trigger CSV file download with UTF-8 BOM and optional Read-Only Protection Header.
  */
-function downloadCsv(content: string, filename: string, includeReadOnlyHeader = true): void {
+function downloadCsv(content: string, filename: string, includeReadOnlyHeader = false): void {
   const finalContent = includeReadOnlyHeader && !content.startsWith('# ===')
     ? `${getReadOnlyHeader()} ${content}`
     : content;
