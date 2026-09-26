@@ -297,14 +297,23 @@ Verification Team`
 
     // Check count mismatch first
     if (student.countMismatch && student.countMismatch.hasMismatch) {
-      if (student.countMismatch.type === 'MORE_IN_SHEET') {
-        items.push(
-          `• Certificate File Discrepancy: You logged ${student.countMismatch.sheetCount} certificate entry/entries in Google Sheets, but only ${student.countMismatch.driveCount} PDF(s) are uploaded in Google Drive. Please upload the missing ${student.countMismatch.difference} certificate file(s).`
-        );
-      } else if (student.countMismatch.type === 'MORE_IN_DRIVE') {
-        items.push(
-          `• Google Sheet Entry Discrepancy: You uploaded ${student.countMismatch.driveCount} certificate file(s) in Google Drive, but only ${student.countMismatch.sheetCount} entry/entries are recorded in the Google Sheet. Please submit the missing details in the Google Form.`
-        );
+      if (student.countMismatch.difference > 0) {
+        if (student.countMismatch.type === 'MORE_IN_SHEET') {
+          items.push(
+            `• Certificate File Discrepancy: You logged ${student.countMismatch.sheetCount} certificate entry/entries in Google Sheets, but only ${student.countMismatch.driveCount} PDF(s) are uploaded in Google Drive. Please upload the missing ${student.countMismatch.difference} certificate file(s).`
+          );
+        } else if (student.countMismatch.type === 'MORE_IN_DRIVE') {
+          items.push(
+            `• Google Sheet Entry Discrepancy: You uploaded ${student.countMismatch.driveCount} certificate file(s) in Google Drive, but only ${student.countMismatch.sheetCount} entry/entries are recorded in the Google Sheet. Please submit the missing details in the Google Form.`
+          );
+        }
+      } else {
+        // Status-only mismatch (e.g. driveUploaded !== sheetUpdated but counts are equal)
+        if (student.driveUploaded && !student.sheetUpdated) {
+          items.push('• Verification Mismatch: Your certificate file is verified in Google Drive, but your Google Sheet registration form entry is currently marked as unverified.');
+        } else if (!student.driveUploaded && student.sheetUpdated) {
+          items.push('• Verification Mismatch: Your Google Sheet registration entry is verified, but your Google Drive certificate file is currently marked as unverified.');
+        }
       }
     }
 
