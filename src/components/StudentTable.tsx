@@ -32,12 +32,26 @@ import {
   Plus,
   Trash2,
   Mail,
+  Calendar,
+  AlertTriangle,
 } from 'lucide-react';
-import { StudentStatusRecord } from '../types';
+import {
+  StudentStatusRecord,
+  DateRangeFilterConfig,
+  SheetRowRecord,
+  DriveCertificateFile,
+  ReconciliationAnalysis,
+} from '../types';
+import { isStudentMatchingDateRange, getLatestStudentActivity } from '../utils/dateFilterUtils';
+import { DataMismatchSection } from './DataMismatchSection';
 
 interface StudentTableProps {
   students: StudentStatusRecord[];
+  sheetRows?: SheetRowRecord[];
+  driveFiles?: DriveCertificateFile[];
+  reconciliationAnalysis?: ReconciliationAnalysis;
   lastScannedTimestamp?: string | null;
+  dateFilterConfig?: DateRangeFilterConfig;
   onToggleSubmitted: (rollNo: string, current: boolean) => void;
   onToggleDriveUploaded: (rollNo: string, current: boolean) => void;
   onToggleSheetUpdated: (rollNo: string, current: boolean) => void;
@@ -60,6 +74,7 @@ interface StudentTableProps {
   onAddRosterStudent?: (rollNo: string, name: string) => void;
   onEditRosterStudent?: (rollNo: string, newName: string) => void;
   onDeleteRosterStudent?: (rollNo: string) => void;
+  onToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
 /**
@@ -125,7 +140,11 @@ export function formatExactTimestamp(isoString?: string): string {
 
 export const StudentTable: React.FC<StudentTableProps> = ({
   students,
+  sheetRows = [],
+  driveFiles = [],
+  reconciliationAnalysis,
   lastScannedTimestamp,
+  dateFilterConfig,
   onToggleSubmitted,
   onToggleDriveUploaded,
   onToggleSheetUpdated,
@@ -148,6 +167,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onAddRosterStudent,
   onEditRosterStudent,
   onDeleteRosterStudent,
+  onToast,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
@@ -155,7 +175,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   const [copiedRollNo, setCopiedRollNo] = useState<string | null>(null);
   const [expandedRollNos, setExpandedRollNos] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<
-    'rollNo' | 'name' | 'overallStatus' | 'driveUploaded' | 'sheetUpdated' | 'submitted'
+    'rollNo' | 'name' | 'overallStatus' | 'driveUploaded' | 'sheetUpdated' | 'submitted' | 'lastActivity'
   >('rollNo');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const exportDropdownRef = useRef<HTMLDivElement>(null);
@@ -235,7 +255,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   };
 
   const handleSort = (
-    field: 'rollNo' | 'name' | 'overallStatus' | 'driveUploaded' | 'sheetUpdated' | 'submitted'
+    field: 'rollNo' | 'name' | 'overallStatus' | 'driveUploaded' | 'sheetUpdated' | 'submitted' | 'lastActivity'
   ) => {
     if (sortField === field) {
       setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -362,9 +382,21 @@ export const StudentTable: React.FC<StudentTableProps> = ({
       case 'NO_CERT':
         result = result.filter((s) => s.certificates.length === 0 && !s.driveUploaded);
         break;
+      case 'COUNT_MISMATCH':
+        result = result.filter((s) => s.countMismatch && s.countMismatch.hasMismatch);
+        break;
       case 'ALL':
       default:
         break;
+    }
+
+    // 2b. Date Range Filter (when activeOnlyMatchingStudents is enabled)
+    if (
+      dateFilterConfig &&
+      dateFilterConfig.activeOnlyMatchingStudents &&
+      (dateFilterConfig.preset !== 'ALL_TIME' || dateFilterConfig.startDate || dateFilterConfig.endDate)
+    ) {
+      result = result.filter((s) => isStudentMatchingDateRange(s, dateFilterConfig).matches);
     }
 
     // 3. Sort Results
@@ -389,13 +421,17 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         cmp = (a.sheetUpdated ? 1 : 0) - (b.sheetUpdated ? 1 : 0);
       } else if (sortField === 'submitted') {
         cmp = (a.submitted ? 1 : 0) - (b.submitted ? 1 : 0);
+      } else if (sortField === 'lastActivity') {
+        const actA = getLatestStudentActivity(a)?.date.getTime() || 0;
+        const actB = getLatestStudentActivity(b)?.date.getTime() || 0;
+        cmp = actA - actB;
       }
 
       return sortDirection === 'asc' ? cmp : -cmp;
     });
 
     return result;
-  }, [students, searchQuery, activeFilter, sortField, sortDirection]);
+  }, [students, searchQuery, activeFilter, sortField, sortDirection, dateFilterConfig]);
 
   // Bulk Selection Helpers
   const isAllFilteredSelected =
@@ -479,6 +515,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
       all: students.length || 67,
       missingDrive: students.filter((s) => !s.driveUploaded).length,
       missingSheet: students.filter((s) => !s.sheetUpdated).length,
+      countMismatch: students.filter((s) => s.countMismatch && s.countMismatch.hasMismatch).length,
       incomplete: students.filter((s) => s.overallStatus !== 'COMPLETED').length,
       dualMissing: students.filter((s) => !s.driveUploaded && !s.sheetUpdated).length,
       unconfirmed: students.filter((s) => !s.submitted).length,
@@ -488,6 +525,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
   const syncIssueChips = [
     { id: 'ALL', label: 'All Roster', count: issueCounts.all, color: 'blue' },
+    { id: 'COUNT_MISMATCH', label: 'Count Mismatch (Sheet ≠ Drive)', count: issueCounts.countMismatch, color: 'orange' },
     { id: 'MISSING_DRIVE', label: 'Missing Drive', count: issueCounts.missingDrive, color: 'amber' },
     { id: 'MISSING_SHEET', label: 'Missing Sheet', count: issueCounts.missingSheet, color: 'purple' },
     { id: 'INCOMPLETE', label: 'Incomplete', count: issueCounts.incomplete, color: 'red' },
@@ -498,6 +536,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
   const filterOptions = [
     { id: 'ALL', label: 'All (67)' },
+    { id: 'COUNT_MISMATCH', label: 'Count Mismatches (Sheet ≠ Drive)' },
     { id: 'COMPLETED', label: 'Completed (All 3 Ticked)' },
     { id: 'PENDING', label: 'Pending Steps' },
     { id: 'NOT_STARTED', label: 'Not Started' },
@@ -511,6 +550,23 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* 0. Dedicated Data Mismatch & Reconciliation Analyzer Section */}
+      <DataMismatchSection
+        students={students}
+        sheetRows={sheetRows}
+        driveFiles={driveFiles}
+        initialAnalysis={reconciliationAnalysis}
+        onFilterTableByMismatch={(filterKey) => {
+          if (filterKey === 'MISSING_SHEET') setActiveFilter('SHEET_PENDING');
+          else if (filterKey === 'MISSING_DRIVE') setActiveFilter('DRIVE_PENDING');
+          else if (filterKey === 'COUNT_MISMATCH') setActiveFilter('COUNT_MISMATCH');
+          else setActiveFilter(filterKey);
+        }}
+        onOpenStudentDetails={onOpenDetails}
+        onOpenEmailReminder={onOpenEmailReminder}
+        onToast={onToast}
+      />
+
       {/* Synchronization Issue Quick Filter Chips */}
       <div className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-3.5 space-y-2 shadow-lg">
         <div className="flex items-center justify-between">
@@ -824,6 +880,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               { id: 'rollNo', label: 'Roll No' },
               { id: 'name', label: 'Student Name' },
               { id: 'overallStatus', label: 'Overall Status' },
+              { id: 'lastActivity', label: 'Submission Date' },
               { id: 'driveUploaded', label: 'Drive Status' },
               { id: 'sheetUpdated', label: 'Sheet Status' },
               { id: 'submitted', label: 'Submission' },
@@ -1211,13 +1268,36 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     )}
                   </button>
                 </th>
+
+                {/* Sortable Recent Activity Date */}
+                <th className="py-3.5 px-4 text-center w-32">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('lastActivity')}
+                    className="inline-flex items-center justify-center gap-1 font-semibold hover:text-white transition cursor-pointer group"
+                    title="Click to sort by Latest Submission / Activity Date"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Latest Activity</span>
+                    {sortField === 'lastActivity' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3.5 h-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" />
+                    )}
+                  </button>
+                </th>
+
                 <th className="py-3.5 px-4 text-right w-24">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-sm">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-500">
+                  <td colSpan={10} className="py-12 text-center text-slate-500">
                     No students match the selected filters or search query.
                   </td>
                 </tr>
@@ -1317,6 +1397,17 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-purple-950/80 text-purple-300 border border-purple-800/70">
                                   <FileCheck className="w-3 h-3" />
                                   {student.driveFiles.length} files in Drive
+                                </span>
+                              )}
+                              {student.countMismatch && student.countMismatch.hasMismatch && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-500/50 shadow-sm"
+                                  title={student.countMismatch.description}
+                                >
+                                  <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                                  {student.countMismatch.type === 'MORE_IN_SHEET'
+                                    ? `⚠️ ${student.countMismatch.sheetCount} Sheet vs ${student.countMismatch.driveCount} Drive (-${student.countMismatch.difference} File)`
+                                    : `⚠️ ${student.countMismatch.driveCount} Drive vs ${student.countMismatch.sheetCount} Sheet (-${student.countMismatch.difference} Form)`}
                                 </span>
                               )}
                             </div>
@@ -1429,6 +1520,34 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                             NOT STARTED
                           </span>
                         )}
+                      </td>
+
+                      {/* Latest Activity Timestamp Cell */}
+                      <td className="py-3.5 px-4 text-center">
+                        {(() => {
+                          const latest = getLatestStudentActivity(student);
+                          if (!latest) {
+                            return <span className="text-[11px] text-slate-600 font-mono">—</span>;
+                          }
+                          return (
+                            <div className="inline-flex flex-col items-center">
+                              <span className="text-xs font-mono font-medium text-slate-300">
+                                {latest.date.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                              </span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+                                  latest.source === 'SHEET'
+                                    ? 'text-emerald-400 bg-emerald-950/60 border border-emerald-900/60'
+                                    : latest.source === 'DRIVE'
+                                    ? 'text-cyan-400 bg-cyan-950/60 border border-cyan-900/60'
+                                    : 'text-purple-400 bg-purple-950/60 border border-purple-900/60'
+                                }`}
+                              >
+                                {latest.source === 'SHEET' ? 'Form' : latest.source === 'DRIVE' ? 'Drive' : 'Status'}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Actions with Floating Hover Popover */}

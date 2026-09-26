@@ -5,6 +5,7 @@ import {
   Send,
   Copy,
   Check,
+  CheckCircle2,
   AlertTriangle,
   Clock,
   Sparkles,
@@ -57,10 +58,17 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
     return new Set(incomplete);
   });
 
+  // Template Preset Type
+  const [templatePreset, setTemplatePreset] = useState<'GENERAL' | 'DISCREPANCY' | 'MISSING_DRIVE' | 'MISSING_SHEET' | 'CUSTOM'>('GENERAL');
+
   // Custom inline emails state: rollNo -> custom email
   const [customEmails, setCustomEmails] = useState<Record<string, string>>({});
   const [editingEmailRollNo, setEditingEmailRollNo] = useState<string | null>(null);
   const [tempEmailInput, setTempEmailInput] = useState('');
+
+  // Per-student custom draft overrides (studentRoll -> { subject, body })
+  const [customStudentDrafts, setCustomStudentDrafts] = useState<Record<string, { subject: string; body: string }>>({});
+  const [isDirectEditingPreview, setIsDirectEditingPreview] = useState(false);
 
   // Email Template customization
   const [subjectTemplate, setSubjectTemplate] = useState(
@@ -85,6 +93,80 @@ Note: If you have already uploaded your certificate file or submitted the respon
 Best regards,
 Academic Certification & Verification Committee`
   );
+
+  const handleSelectTemplatePreset = (preset: 'GENERAL' | 'DISCREPANCY' | 'MISSING_DRIVE' | 'MISSING_SHEET' | 'CUSTOM') => {
+    setTemplatePreset(preset);
+    if (preset === 'GENERAL') {
+      setSubjectTemplate('Action Required: Certificate Submission Pending - {{student_name}} ({{roll_no}})');
+      setBodyTemplate(
+        `Dear {{student_name}},
+
+This is an official reminder regarding your certificate submission for the class roster (Roll No: {{roll_no}}).
+
+Current Status: {{status}}
+
+Required Action(s):
+{{missing_items}}
+
+Please complete your pending submission at your earliest convenience:
+• Google Drive Upload Folder: {{drive_link}}
+• Google Sheet / Response Form: {{sheet_link}}
+
+Best regards,
+Academic Certification & Verification Committee`
+      );
+    } else if (preset === 'DISCREPANCY') {
+      setSubjectTemplate('⚠️ Certificate Count Discrepancy Notice - {{student_name}} ({{roll_no}})');
+      setBodyTemplate(
+        `Dear {{student_name}},
+
+During our automated certificate reconciliation audit for Roll No: {{roll_no}}, a quantity mismatch was identified between your Google Sheet form responses and your Google Drive uploads.
+
+Discrepancy Details:
+{{discrepancy_details}}
+
+Summary of Missing Items:
+{{missing_items}}
+
+Next Steps:
+1. If you submitted form entries without uploading the corresponding certificate file(s), please upload the original PDF/image to Google Drive:
+   {{drive_link}}
+2. If you uploaded certificate files in Google Drive but forgot to fill the details in the Google Form, please submit your response:
+   {{sheet_link}}
+
+Please resolve this mismatch so your verification status can be marked as COMPLETED.
+
+Regards,
+Academic Verification Committee`
+      );
+    } else if (preset === 'MISSING_DRIVE') {
+      setSubjectTemplate('Action Required: Missing Certificate PDF in Google Drive - {{student_name}} ({{roll_no}})');
+      setBodyTemplate(
+        `Dear {{student_name}},
+
+Your details have been logged in the Google Sheet form, but we have not yet detected your certificate PDF in the official Google Drive folder.
+
+Please upload your certificate file named with your Roll Number (e.g., {{roll_no}}_Certificate.pdf) to:
+• Google Drive Upload Folder: {{drive_link}}
+
+Thank you,
+Verification Team`
+      );
+    } else if (preset === 'MISSING_SHEET') {
+      setSubjectTemplate('Action Required: Missing Google Form Response - {{student_name}} ({{roll_no}})');
+      setBodyTemplate(
+        `Dear {{student_name}},
+
+We noticed that you have uploaded certificate files in the Google Drive folder, but have not submitted your certificate response in the Google Sheet / Registration Form.
+
+Please record your certificate details here:
+• Form Link: {{sheet_link}}
+
+Thank you,
+Verification Team`
+      );
+    }
+  };
 
   // Copy feedback state
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -143,20 +225,34 @@ Academic Certification & Verification Committee`
 
   const getMissingItemsDescription = (student: StudentStatusRecord): string => {
     const items: string[] = [];
+
+    // Check count mismatch first
+    if (student.countMismatch && student.countMismatch.hasMismatch) {
+      if (student.countMismatch.type === 'MORE_IN_SHEET') {
+        items.push(
+          `• Certificate File Discrepancy: You logged ${student.countMismatch.sheetCount} certificate entry/entries in Google Sheets, but only ${student.countMismatch.driveCount} PDF(s) are uploaded in Google Drive. Please upload the missing ${student.countMismatch.difference} certificate file(s).`
+        );
+      } else if (student.countMismatch.type === 'MORE_IN_DRIVE') {
+        items.push(
+          `• Google Sheet Entry Discrepancy: You uploaded ${student.countMismatch.driveCount} certificate file(s) in Google Drive, but only ${student.countMismatch.sheetCount} entry/entries are recorded in the Google Sheet. Please submit the missing details in the Google Form.`
+        );
+      }
+    }
+
     if (!student.driveUploaded) {
       items.push('• Google Drive Certificate File: MISSING. Please upload your original PDF or image certificate to the shared Google Drive folder.');
     } else {
-      items.push('• Google Drive Certificate File: COMPLETED.');
+      items.push(`• Google Drive Certificate File: COMPLETED (${student.driveFiles.length} file(s) on record).`);
     }
 
     if (!student.sheetUpdated) {
       items.push('• Google Sheet Response Record: MISSING. Please fill out the registration/response form with your certificate details.');
     } else {
-      items.push('• Google Sheet Response Record: COMPLETED.');
+      items.push(`• Google Sheet Response Record: COMPLETED (${student.sheetRecords.length} entry/entries on record).`);
     }
 
     if (student.driveUploaded && student.sheetUpdated && !student.submitted) {
-      items.push('• Admin Confirmation: Awaiting final verification by faculty administrator.');
+      items.push('• Admin Verification: Awaiting final review & confirmation by faculty administrator.');
     }
 
     return items.join('\n');
@@ -172,18 +268,34 @@ Academic Certification & Verification Committee`
 
   // Render personalized template for a student
   const renderPersonalizedEmail = (student: StudentStatusRecord) => {
+    // If admin wrote a specific custom draft for this student
+    if (customStudentDrafts[student.rollNo]) {
+      return customStudentDrafts[student.rollNo];
+    }
+
     const missingDesc = getMissingItemsDescription(student);
+    const discrepancyDesc = student.countMismatch && student.countMismatch.hasMismatch
+      ? student.countMismatch.description
+      : 'No quantity discrepancies detected.';
+
+    const sheetCount = student.sheetRecords ? student.sheetRecords.length : (student.sheetUpdated ? 1 : 0);
+    const driveCount = student.driveFiles ? student.driveFiles.length : (student.driveUploaded ? 1 : 0);
 
     const subject = subjectTemplate
       .replace(/{{student_name}}/g, student.name)
       .replace(/{{roll_no}}/g, student.rollNo)
-      .replace(/{{status}}/g, student.overallStatus);
+      .replace(/{{status}}/g, student.overallStatus)
+      .replace(/{{sheet_count}}/g, String(sheetCount))
+      .replace(/{{drive_count}}/g, String(driveCount));
 
     const body = bodyTemplate
       .replace(/{{student_name}}/g, student.name)
       .replace(/{{roll_no}}/g, student.rollNo)
       .replace(/{{status}}/g, student.overallStatus)
       .replace(/{{missing_items}}/g, missingDesc)
+      .replace(/{{discrepancy_details}}/g, discrepancyDesc)
+      .replace(/{{sheet_count}}/g, String(sheetCount))
+      .replace(/{{drive_count}}/g, String(driveCount))
       .replace(/{{drive_link}}/g, driveFolderUrl)
       .replace(/{{sheet_link}}/g, sheetUrl);
 
@@ -660,6 +772,14 @@ Academic Certification & Verification Committee`;
 
                         {/* Missing items breakdown tags */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[10px]">
+                          {s.countMismatch && s.countMismatch.hasMismatch && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-600/70 flex items-center gap-1 font-mono font-bold">
+                              <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
+                              {s.countMismatch.type === 'MORE_IN_SHEET'
+                                ? `Mismatch: ${s.countMismatch.sheetCount} Sheet vs ${s.countMismatch.driveCount} Drive`
+                                : `Mismatch: ${s.countMismatch.driveCount} Drive vs ${s.countMismatch.sheetCount} Sheet`}
+                            </span>
+                          )}
                           {!s.driveUploaded && (
                             <span className="px-1.5 py-0.5 rounded bg-red-950/60 text-red-300 border border-red-900 flex items-center gap-1">
                               <HardDrive className="w-2.5 h-2.5" /> Missing Drive
@@ -695,17 +815,55 @@ Academic Certification & Verification Committee`;
                 <span className="text-[10px] text-slate-500 font-mono">Dynamic Tags</span>
               </div>
 
+              {/* Template Presets Selector */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Select Template Preset:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'GENERAL', label: 'Default Action Required' },
+                    { id: 'DISCREPANCY', label: '⚠️ Count Mismatch (3 vs 2)' },
+                    { id: 'MISSING_DRIVE', label: 'Missing Drive File' },
+                    { id: 'MISSING_SHEET', label: 'Missing Sheet Entry' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleSelectTemplatePreset(preset.id as any)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                        templatePreset === preset.id
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+                          : 'bg-slate-900 hover:bg-slate-850 text-slate-400 border-slate-800'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Dynamic Tokens list */}
               <div className="text-[10px] text-slate-400 space-y-1">
-                <span className="block font-semibold text-slate-300">Available Variables:</span>
+                <span className="block font-semibold text-slate-300">Click to Insert Dynamic Variable:</span>
                 <div className="flex flex-wrap gap-1 font-mono text-[10px]">
-                  {['{{student_name}}', '{{roll_no}}', '{{status}}', '{{missing_items}}', '{{drive_link}}', '{{sheet_link}}'].map((tag) => (
+                  {[
+                    '{{student_name}}',
+                    '{{roll_no}}',
+                    '{{status}}',
+                    '{{missing_items}}',
+                    '{{discrepancy_details}}',
+                    '{{sheet_count}}',
+                    '{{drive_count}}',
+                    '{{drive_link}}',
+                    '{{sheet_link}}',
+                  ].map((tag) => (
                     <button
                       key={tag}
                       type="button"
                       onClick={() => setBodyTemplate((prev) => prev + ' ' + tag)}
                       className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 transition cursor-pointer"
-                      title="Click to insert tag"
+                      title="Click to insert tag into message body"
                     >
                       {tag}
                     </button>
@@ -740,41 +898,117 @@ Academic Certification & Verification Committee`;
               </div>
             </div>
 
-            {/* Live Preview Card */}
-            <div className="p-4 bg-gradient-to-b from-slate-950 to-slate-900 border border-slate-800 rounded-2xl space-y-2.5 flex-1 shadow-lg">
+            {/* Live Preview & Direct Student Draft Editor */}
+            <div className="p-4 bg-gradient-to-b from-slate-950 to-slate-900 border border-slate-800 rounded-2xl space-y-3 flex-1 shadow-lg">
               <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
                 <div className="flex items-center gap-1.5">
                   <Eye className="w-3.5 h-3.5 text-blue-400" />
                   <span className="text-xs font-bold text-white uppercase tracking-wider">
-                    Live Personalized Preview
+                    {isDirectEditingPreview ? 'Customizing Draft for Student' : 'Live Personalized Preview'}
                   </span>
                 </div>
-                {activePreviewStudent && (
-                  <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-mono font-bold">
-                    {activePreviewStudent.rollNo}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {activePreviewStudent && (
+                    <button
+                      type="button"
+                      onClick={() => setIsDirectEditingPreview(!isDirectEditingPreview)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition cursor-pointer border ${
+                        isDirectEditingPreview
+                          ? 'bg-purple-950 text-purple-300 border-purple-700'
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      {isDirectEditingPreview ? 'Switch to Auto-Preview' : '✏️ Edit This Student Draft'}
+                    </button>
+                  )}
+                  {activePreviewStudent && (
+                    <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-mono font-bold">
+                      {activePreviewStudent.rollNo}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {activePreviewStudent ? (
-                <div className="space-y-2 text-xs">
-                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 space-y-1 text-[11px]">
+                <div className="space-y-2.5 text-xs">
+                  {/* Real Delivery Assurance Card */}
+                  <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800/50 flex items-start gap-2.5 text-[11px] text-emerald-300">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="text-emerald-200">Real Email Delivery:</strong> Clicking <strong>Send via Gmail</strong> or <strong>Mail Client</strong> opens an authentic message draft in your real email client with recipient, subject, and personalized body filled in. Clicking send delivers genuine emails directly to actual student inboxes.
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-[11px]">
                     <div className="flex items-center gap-1.5">
                       <span className="text-slate-500 font-bold uppercase text-[9px] w-14">To:</span>
                       <span className="text-slate-200 font-mono">{getStudentEmail(activePreviewStudent)}</span>
                     </div>
+
                     <div className="flex items-center gap-1.5">
                       <span className="text-slate-500 font-bold uppercase text-[9px] w-14">Subject:</span>
-                      <span className="text-white font-semibold">{previewEmailContent.subject}</span>
+                      {isDirectEditingPreview ? (
+                        <input
+                          type="text"
+                          value={customStudentDrafts[activePreviewStudent.rollNo]?.subject ?? previewEmailContent.subject}
+                          onChange={(e) => {
+                            const newSub = e.target.value;
+                            setCustomStudentDrafts((prev) => ({
+                              ...prev,
+                              [activePreviewStudent.rollNo]: {
+                                subject: newSub,
+                                body: prev[activePreviewStudent.rollNo]?.body ?? previewEmailContent.body,
+                              },
+                            }));
+                          }}
+                          className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                        />
+                      ) : (
+                        <span className="text-white font-semibold">{previewEmailContent.subject}</span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-300 text-[11px] font-sans whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed border-l-2 border-l-amber-500">
-                    {previewEmailContent.body}
-                  </div>
+                  {isDirectEditingPreview ? (
+                    <textarea
+                      rows={6}
+                      value={customStudentDrafts[activePreviewStudent.rollNo]?.body ?? previewEmailContent.body}
+                      onChange={(e) => {
+                        const newBody = e.target.value;
+                        setCustomStudentDrafts((prev) => ({
+                          ...prev,
+                          [activePreviewStudent.rollNo]: {
+                            subject: prev[activePreviewStudent.rollNo]?.subject ?? previewEmailContent.subject,
+                            body: newBody,
+                          },
+                        }));
+                      }}
+                      className="w-full bg-slate-900/90 border border-amber-500/50 rounded-xl p-3 text-slate-200 text-xs font-mono leading-relaxed focus:outline-none"
+                    />
+                  ) : (
+                    <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-300 text-[11px] font-sans whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed border-l-2 border-l-amber-500">
+                      {previewEmailContent.body}
+                    </div>
+                  )}
 
                   {/* Actions for preview student */}
-                  <div className="flex items-center gap-2 pt-1 justify-end">
+                  <div className="flex items-center gap-2 pt-1 justify-end flex-wrap">
+                    {customStudentDrafts[activePreviewStudent.rollNo] && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomStudentDrafts((prev) => {
+                            const next = { ...prev };
+                            delete next[activePreviewStudent.rollNo];
+                            return next;
+                          });
+                        }}
+                        className="px-2.5 py-1 text-[11px] text-rose-400 hover:bg-rose-950/40 rounded-lg border border-rose-500/30 transition cursor-pointer"
+                      >
+                        Reset to Template
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={handleCopyMessage}
@@ -786,11 +1020,22 @@ Academic Certification & Verification Committee`;
 
                     <button
                       type="button"
+                      onClick={() => handleOpenMailto(activePreviewStudent)}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+                      title="Open default system mail client"
+                    >
+                      <Mail className="w-3 h-3 text-blue-400" />
+                      <span>Mail Client</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => handleOpenGmailWeb(activePreviewStudent)}
                       className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-red-600/20"
+                      title="Open authentic Gmail composer ready to send to real student mailbox"
                     >
                       <Send className="w-3 h-3" />
-                      <span>Send to {activePreviewStudent.rollNo}</span>
+                      <span>Send to {activePreviewStudent.rollNo} via Gmail</span>
                     </button>
                   </div>
                 </div>

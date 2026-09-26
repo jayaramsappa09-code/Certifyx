@@ -11,7 +11,9 @@ import {
   SheetRowRecord,
   StudentStatusRecord,
   SyncReport,
+  ReconciliationAnalysis,
 } from '../types';
+import { generateReconciliationAnalysis } from '../utils/reconciliationAnalyzer';
 import {
   getSubmittedStatusMap,
   getDriveStatusOverrideMap,
@@ -228,6 +230,7 @@ export interface SyncEngineInput {
 export interface SyncEngineResult {
   studentStatuses: StudentStatusRecord[];
   report: SyncReport;
+  reconciliationAnalysis: ReconciliationAnalysis;
   unidentifiedFiles: DriveCertificateFile[];
   outsideClassFiles: DriveCertificateFile[];
   duplicateFiles: DriveCertificateFile[];
@@ -258,19 +261,31 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
 
   // Seed reference fallback if neither Drive nor Sheets are connected yet and requested
   if (driveFiles.length === 0 && sheetRows.length === 0 && input.useSeedDataIfEmpty) {
-    driveFiles = INITIAL_REFERENCE_CERTIFICATES.map((ref, idx) => ({
-      id: `seed_drive_${idx}`,
-      name: `${ref.rollNo}_${ref.certType}.pdf`,
-      mimeType: 'application/pdf',
-      createdTime: new Date().toISOString(),
-      webViewLink: '#',
-    }));
-    sheetRows = INITIAL_REFERENCE_CERTIFICATES.slice(0, 20).map((ref, idx) => ({
-      rowIndex: idx + 2,
-      rollNo: ref.rollNo,
-      certificateType: ref.certType,
-      rawValues: { 'Roll No': ref.rollNo, Certificate: ref.certType },
-    }));
+    const nowMs = Date.now();
+    driveFiles = INITIAL_REFERENCE_CERTIFICATES.map((ref, idx) => {
+      // Distribute timestamps over the last 15 days so timeline charts and date filters are vivid
+      const daysAgo = idx % 15;
+      const fileDate = new Date(nowMs - daysAgo * 86400000 - (idx * 3600000)).toISOString();
+      return {
+        id: `seed_drive_${idx}`,
+        name: `${ref.rollNo}_${ref.certType}.pdf`,
+        mimeType: 'application/pdf',
+        createdTime: fileDate,
+        modifiedTime: fileDate,
+        webViewLink: '#',
+      };
+    });
+    sheetRows = INITIAL_REFERENCE_CERTIFICATES.slice(0, 24).map((ref, idx) => {
+      const daysAgo = (idx + 1) % 12;
+      const rowDate = new Date(nowMs - daysAgo * 86400000 - (idx * 1800000)).toISOString();
+      return {
+        rowIndex: idx + 2,
+        rollNo: ref.rollNo,
+        certificateType: ref.certType,
+        submissionTimestamp: rowDate,
+        rawValues: { 'Roll No': ref.rollNo, Certificate: ref.certType, Timestamp: rowDate },
+      };
+    });
   }
 
   // Collections for review
@@ -561,6 +576,32 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
       overallStatus = 'PENDING';
     }
 
+    // Certificate Quantity Discrepancy (e.g., 3 in Sheet vs 2 in Drive or vice-versa)
+    const driveCount = matchedDriveFiles.length;
+    const sheetCount = matchedSheetRows.length;
+    const hasMismatch = (driveCount > 0 || sheetCount > 0) && driveCount !== sheetCount;
+    let mismatchType: 'MORE_IN_SHEET' | 'MORE_IN_DRIVE' | 'EQUAL' = 'EQUAL';
+    let mismatchDesc = '';
+
+    if (driveCount > sheetCount) {
+      mismatchType = 'MORE_IN_DRIVE';
+      const diff = driveCount - sheetCount;
+      mismatchDesc = `${driveCount} Drive file${driveCount > 1 ? 's' : ''} uploaded vs ${sheetCount} Sheet response${sheetCount !== 1 ? 's' : ''} (${diff} missing in Google Sheet)`;
+    } else if (sheetCount > driveCount) {
+      mismatchType = 'MORE_IN_SHEET';
+      const diff = sheetCount - driveCount;
+      mismatchDesc = `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} logged vs ${driveCount} Drive file${driveCount !== 1 ? 's' : ''} (${diff} missing in Google Drive)`;
+    }
+
+    const countMismatch = {
+      hasMismatch,
+      driveCount,
+      sheetCount,
+      difference: Math.abs(driveCount - sheetCount),
+      type: mismatchType,
+      description: mismatchDesc,
+    };
+
     return {
       rollNo: student.rollNo,
       name: student.name,
@@ -570,6 +611,7 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
       sheetUpdated,
       submitted,
       overallStatus,
+      countMismatch,
       driveFiles: matchedDriveFiles,
       sheetRecords: matchedSheetRows,
       lastUpdated: new Date().toISOString(),
@@ -597,6 +639,12 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     durationMs,
   };
 
+  const reconciliationAnalysis = generateReconciliationAnalysis(
+    studentStatuses,
+    sheetRows,
+    driveFiles
+  );
+
   // Persist report & log
   addSyncReport(report);
   addAuditLog(
@@ -609,6 +657,7 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
   return {
     studentStatuses,
     report,
+    reconciliationAnalysis,
     unidentifiedFiles,
     outsideClassFiles,
     duplicateFiles,

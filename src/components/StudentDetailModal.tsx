@@ -18,9 +18,12 @@ import {
   Link,
   Check,
   Mail,
+  History,
+  AlertTriangle,
 } from 'lucide-react';
 import { StudentStatusRecord, DriveCertificateFile } from '../types';
 import { CertificateThumbnail } from './ManualReviewQueue';
+import { getStudentActivityEvents } from '../utils/dateFilterUtils';
 
 interface StudentDetailModalProps {
   student: StudentStatusRecord | null;
@@ -264,6 +267,67 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             </div>
           </div>
 
+          {/* Certificate Quantity Discrepancy Alert & Reconciliation Card */}
+          {student.countMismatch && student.countMismatch.hasMismatch && (
+            <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 space-y-3 animate-in fade-in">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-amber-200 flex items-center gap-2">
+                      <span>Quantity Discrepancy Detected</span>
+                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {student.countMismatch.sheetCount} in Sheet vs {student.countMismatch.driveCount} in Drive
+                      </span>
+                    </h4>
+                    <p className="text-xs text-amber-300/90 mt-1">
+                      {student.countMismatch.description}
+                    </p>
+                  </div>
+                </div>
+
+                {onOpenEmailReminder && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenEmailReminder(student)}
+                    className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Email Student</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Resolution Guide */}
+              <div className="bg-slate-950/60 rounded-xl p-3 border border-amber-900/40 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="space-y-1">
+                  <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                    Google Sheet ({student.countMismatch.sheetCount} entries)
+                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    {student.countMismatch.type === 'MORE_IN_SHEET'
+                      ? `Student logged ${student.countMismatch.difference} more response(s) in the form than PDF files uploaded in Drive.`
+                      : 'All Sheet entries have corresponding or extra Drive files.'}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                    <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
+                    Google Drive ({student.countMismatch.driveCount} files)
+                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    {student.countMismatch.type === 'MORE_IN_DRIVE'
+                      ? `Student uploaded ${student.countMismatch.difference} more certificate file(s) than rows registered in Google Sheet.`
+                      : 'Ensure student uploads missing certificates to the shared Drive folder.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Unified Certificate Tracker Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -443,6 +507,52 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Chronological Submission & Verification Activity Timeline */}
+          {(() => {
+            const events = getStudentActivityEvents(student);
+            if (events.length === 0) return null;
+            return (
+              <div className="space-y-3 pt-2 border-t border-slate-800">
+                <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                  <History className="w-4 h-4 text-cyan-400" />
+                  <span>Submission &amp; Activity Timeline ({events.length} events recorded)</span>
+                </h3>
+                <div className="space-y-2 bg-slate-950/70 border border-slate-800 rounded-2xl p-4">
+                  {events.map((ev, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-start gap-3 text-xs pb-2.5 last:pb-0 border-b border-slate-800/60 last:border-b-0"
+                    >
+                      <span
+                        className={`mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase ${
+                          ev.source === 'SHEET'
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                            : ev.source === 'DRIVE'
+                            ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                            : 'bg-purple-950 text-purple-300 border border-purple-800'
+                        }`}
+                      >
+                        {ev.source === 'SHEET' ? 'Sheet' : ev.source === 'DRIVE' ? 'Drive' : 'Status'}
+                      </span>
+                      <div className="flex-1">
+                        <p className="font-semibold text-slate-200">{ev.title}</p>
+                        <p className="text-[11px] text-slate-400">{ev.detail}</p>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-400 shrink-0">
+                        {ev.date.toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer */}

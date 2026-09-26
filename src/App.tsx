@@ -98,6 +98,16 @@ import { OfflinePendingUpdatesModal } from './components/OfflinePendingUpdatesMo
 import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
 import { EmailReminderModal } from './components/EmailReminderModal';
+import { AutoEmailSchedulerModal } from './components/AutoEmailSchedulerModal';
+import { DateRangeFilterBar } from './components/DateRangeFilterBar';
+import {
+  DateRangeFilterConfig,
+} from './types';
+import {
+  isStudentMatchingDateRange,
+  getLatestStudentActivity,
+  DateRangeAnalysisResult,
+} from './utils/dateFilterUtils';
 import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
@@ -180,11 +190,19 @@ export default function App() {
   // UI Navigation & Modals
   const [activeTab, setActiveTab] = useState<'dashboard' | 'review' | 'integration' | 'history' | 'audit' | 'docs'>('dashboard');
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
+  const [dateFilterConfig, setDateFilterConfig] = useState<DateRangeFilterConfig>({
+    preset: 'ALL_TIME',
+    startDate: null,
+    endDate: null,
+    basis: 'ALL',
+    activeOnlyMatchingStudents: false,
+  });
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<StudentStatusRecord | null>(null);
   const [showSyncReportModal, setShowSyncReportModal] = useState(false);
   const [showAdvancedExportModal, setShowAdvancedExportModal] = useState(false);
   const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
   const [showEmailReminderModal, setShowEmailReminderModal] = useState(false);
+  const [showAutoSchedulerModal, setShowAutoSchedulerModal] = useState(false);
   const [targetStudentForReminder, setTargetStudentForReminder] = useState<StudentStatusRecord | null>(null);
   const [showFirstSyncPreviewModal, setShowFirstSyncPreviewModal] = useState(false);
   const [pendingFirstSyncResult, setPendingFirstSyncResult] = useState<SyncEngineResult | null>(null);
@@ -1397,6 +1415,62 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
     URL.revokeObjectURL(url);
   };
 
+  // Export Period Submission Progress CSV
+  const handleExportPeriodCsv = (analysis: DateRangeAnalysisResult) => {
+    const headers = [
+      'Roll Number',
+      'Student Name',
+      'Overall Status',
+      'Drive Uploaded',
+      'Sheet Updated',
+      'Admin Submitted',
+      'Active In Selected Window',
+      'Latest Activity Date',
+      'Activity Source',
+      'Certificates Count',
+      'Certificate Titles',
+    ];
+
+    const rows = studentStatuses.map((s) => {
+      const match = isStudentMatchingDateRange(s, dateFilterConfig);
+      const latest = getLatestStudentActivity(s);
+      return [
+        `"${s.rollNo}"`,
+        `"${s.name}"`,
+        `"${s.overallStatus}"`,
+        `"${s.driveUploaded ? 'YES' : 'NO'}"`,
+        `"${s.sheetUpdated ? 'YES' : 'NO'}"`,
+        `"${s.submitted ? 'YES' : 'NO'}"`,
+        `"${match.matches ? 'YES' : 'NO'}"`,
+        `"${latest ? latest.isoDate : 'N/A'}"`,
+        `"${latest ? latest.source : 'N/A'}"`,
+        s.certificates.length,
+        `"${s.certificates.join('; ')}"`,
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const dateRangeLabel =
+      dateFilterConfig.preset !== 'CUSTOM'
+        ? dateFilterConfig.preset.toLowerCase()
+        : `${dateFilterConfig.startDate || 'start'}_to_${dateFilterConfig.endDate || 'end'}`;
+    link.download = `Student_Progress_${dateRangeLabel}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    addAuditLog(
+      'Export Period CSV',
+      currentUser?.email || 'admin',
+      `Exported student submission progress for date filter period: ${dateFilterConfig.preset}`,
+      'STATUS'
+    );
+    showToast(`Exported period progress CSV (${analysis.activeStudentsInRange} active students in window)`, 'success');
+  };
+
   // If Access Denied (Unauthorized account logged in, Section 28)
   if (isAccessDenied) {
     return (
@@ -1598,6 +1672,19 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                   setActiveFilter(f);
                 }
               }}
+              onOpenEmailReminder={() => {
+                setTargetStudentForReminder(null);
+                setShowEmailReminderModal(true);
+              }}
+              onOpenAutoScheduler={() => setShowAutoSchedulerModal(true)}
+            />
+
+            {/* Date-Range Filter Bar & Submission Velocity Analytics */}
+            <DateRangeFilterBar
+              students={studentStatuses}
+              config={dateFilterConfig}
+              onChangeConfig={setDateFilterConfig}
+              onExportPeriodCsv={handleExportPeriodCsv}
             />
 
             {/* Status Distribution Recharts Bar Chart */}
@@ -1610,9 +1697,10 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               onSelectFilter={setActiveFilter}
             />
 
-            {/* Student Table */}
+            {/* Student Table with Integrated Data Mismatch Section */}
             <StudentTable
               students={studentStatuses}
+              sheetRows={sheetSyncProof?.rows || []}
               lastScannedTimestamp={
                 lastSyncReport?.timestamp ||
                 driveConfig?.lastSynced ||
@@ -1620,6 +1708,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                 sheetSyncProof?.timestamp ||
                 null
               }
+              dateFilterConfig={dateFilterConfig}
               onToggleSubmitted={handleToggleSubmitted}
               onToggleDriveUploaded={handleToggleDriveUploaded}
               onToggleSheetUpdated={handleToggleSheetUpdated}
@@ -1645,6 +1734,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               onAddRosterStudent={handleAddRosterStudent}
               onEditRosterStudent={handleEditRosterStudent}
               onDeleteRosterStudent={handleDeleteRosterStudent}
+              onToast={showToast}
             />
           </div>
         )}
@@ -1823,6 +1913,30 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
           sheetConfig={sheetConfig}
           onRecordAuditLog={(action, details) => {
             addAuditLog(action, currentUser?.email || 'admin', details, 'STATUS');
+            setAuditLogs(getAuditLogs());
+          }}
+          onToast={showToast}
+        />
+      )}
+
+      {/* Auto Email Reminder Scheduler Modal */}
+      {showAutoSchedulerModal && (
+        <AutoEmailSchedulerModal
+          isOpen={showAutoSchedulerModal}
+          onClose={() => setShowAutoSchedulerModal(false)}
+          students={studentStatuses}
+          settings={settings}
+          onSaveSettings={(newSettings) => {
+            saveAppSettings(newSettings);
+            setSettings((prev) => ({ ...prev, ...newSettings }));
+          }}
+          onOpenEmailReminder={(student) => {
+            setShowAutoSchedulerModal(false);
+            setTargetStudentForReminder(student || null);
+            setShowEmailReminderModal(true);
+          }}
+          onRecordAuditLog={(action, details) => {
+            addAuditLog(action, currentUser?.email || 'admin', details, 'SETTINGS');
             setAuditLogs(getAuditLogs());
           }}
           onToast={showToast}
