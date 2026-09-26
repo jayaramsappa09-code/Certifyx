@@ -148,9 +148,80 @@ export async function listDriveFolders(
 }
 
 /**
+ * Search all files across the entire Drive with full-text search and optional mimeType filter.
+ */
+export async function searchAllDriveFiles(
+  query: string,
+  accessToken: string,
+  mimeType?: string
+): Promise<DriveCertificateFile[]> {
+  const files: DriveCertificateFile[] = [];
+  let pageToken: string | null = null;
+
+  // Build query: full-text search + optional mimeType filter
+  let q = `fullText contains '${query.replace(/'/g, "\\'")}' and trashed = false`;
+  if (mimeType) {
+    q += ` and mimeType = '${mimeType}'`;
+  }
+
+  do {
+    const params = new URLSearchParams({
+      q: q,
+      pageSize: '100',
+      fields:
+        'nextPageToken,files(id,name,mimeType,createdTime,modifiedTime,webViewLink,webContentLink,thumbnailLink,iconLink,size,parents)',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
+    });
+
+    if (pageToken) {
+      params.set('pageToken', pageToken);
+    }
+
+    const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`;
+    const res = await fetchDriveWithRetry(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error('Google authorization expired or invalid. Please re-authenticate.');
+      }
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error?.message || `Failed to search Drive files (${res.status})`);
+    }
+
+    const data = await res.json();
+    if (data.files && Array.isArray(data.files)) {
+      for (const item of data.files) {
+        // Exclude folders from file search results
+        if (item.mimeType === 'application/vnd.google-apps.folder') continue;
+
+        files.push({
+          id: item.id,
+          name: item.name,
+          mimeType: item.mimeType,
+          createdTime: item.createdTime,
+          modifiedTime: item.modifiedTime,
+          webViewLink: item.webViewLink || `https://drive.google.com/file/d/${item.id}/view`,
+          webContentLink: item.webContentLink,
+          thumbnailLink: item.thumbnailLink,
+          iconLink: item.iconLink,
+          size: item.size,
+        });
+      }
+    }
+
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
+
+  return files;
+}
+
+/**
  * List all certificate files in a specified folder (recursively scanning all nested subfolders and shortcuts).
- * Uses pagination and smart parent-folder tracking.
- * Supported file types: All documents, images, PDFs, form response attachments.
  */
 export async function listCertificateFilesInFolder(
   folderId: string,

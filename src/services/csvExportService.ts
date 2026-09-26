@@ -367,12 +367,34 @@ export function exportAuditLogsCsv(logs: AuditLogEntry[]): void {
 /**
  * Advanced Export Customization Options
  */
+export interface ColumnConfig {
+  id: string;
+  label: string;
+  getValue: (s: StudentStatusRecord, options: AdvancedExportOptions) => string;
+}
+
+export const ALL_EXPORT_COLUMNS: ColumnConfig[] = [
+  { id: 'rollNo', label: 'Roll No', getValue: (s) => s.rollNo },
+  { id: 'name', label: 'Student Name', getValue: (s) => s.name },
+  { id: 'certCount', label: 'Total Certificates Count', getValue: (s) => String(s.certificates.length || s.driveFiles.length) },
+  { id: 'certs', label: 'All Certificates', getValue: (s) => s.certificates.join('; ') || 'None' },
+  { id: 'driveStatus', label: 'Drive Uploaded', getValue: (s, opts) => s.driveUploaded ? opts.driveUploadedLabels.trueLabel : opts.driveUploadedLabels.falseLabel },
+  { id: 'sheetStatus', label: 'Spreadsheet Updated', getValue: (s, opts) => s.sheetUpdated ? opts.sheetUpdatedLabels.trueLabel : opts.sheetUpdatedLabels.falseLabel },
+  { id: 'adminStatus', label: 'Admin Confirmed', getValue: (s, opts) => s.submitted ? opts.submittedLabels.trueLabel : opts.submittedLabels.falseLabel },
+  { id: 'overallStatus', label: 'Overall Status', getValue: (s) => s.overallStatus },
+  { id: 'driveFiles', label: 'Drive File Names', getValue: (s) => s.driveFiles.map((f) => f.name).join('; ') || 'None' },
+  { id: 'driveLinks', label: 'Drive Shareable Links', getValue: (s) => s.driveFiles.map((f) => f.webViewLink || '').filter(Boolean).join('; ') || 'None' },
+  { id: 'sheetRows', label: 'Sheet Row Numbers', getValue: (s) => s.sheetRecords.map((r) => `#${r.rowIndex}`).join('; ') || 'None' },
+  { id: 'lastVerified', label: 'Last Verified Timestamp', getValue: (s) => s.lastUpdated || new Date().toISOString() },
+];
+
 export interface AdvancedExportOptions {
   driveUploadedLabels: { trueLabel: string; falseLabel: string };
   sheetUpdatedLabels: { trueLabel: string; falseLabel: string };
   submittedLabels: { trueLabel: string; falseLabel: string };
   statusLabels?: { completed: string; pending: string; notStarted: string };
   readOnlyProtected?: boolean;
+  selectedColumnIds: string[];
 }
 
 export const DEFAULT_ADVANCED_EXPORT_OPTIONS: AdvancedExportOptions = {
@@ -385,6 +407,7 @@ export const DEFAULT_ADVANCED_EXPORT_OPTIONS: AdvancedExportOptions = {
     notStarted: 'NOT STARTED',
   },
   readOnlyProtected: true,
+  selectedColumnIds: ['rollNo', 'name', 'certCount', 'driveStatus', 'sheetStatus', 'adminStatus', 'overallStatus', 'driveFiles'],
 };
 
 /**
@@ -395,67 +418,13 @@ export function exportAdvancedCustomizedDataCsv(
   students: StudentStatusRecord[],
   options: AdvancedExportOptions = DEFAULT_ADVANCED_EXPORT_OPTIONS
 ): void {
-  const headers = [
-    'Roll No',
-    'Student Name',
-    'Total Certificates Count',
-    'All Certificates (Combined)',
-    `Drive Uploaded (${options.driveUploadedLabels.trueLabel} / ${options.driveUploadedLabels.falseLabel})`,
-    `Spreadsheet Updated (${options.sheetUpdatedLabels.trueLabel} / ${options.sheetUpdatedLabels.falseLabel})`,
-    `Admin Confirmed (${options.submittedLabels.trueLabel} / ${options.submittedLabels.falseLabel})`,
-    'Overall Status',
-    'Drive File Names',
-    'Drive Shareable Links',
-    'Sheet Row Numbers',
-    'Last Verified Timestamp',
-  ];
+  const activeColumns = ALL_EXPORT_COLUMNS.filter((col) =>
+    options.selectedColumnIds.includes(col.id)
+  );
+  const headers = activeColumns.map((col) => col.label);
 
   const rows = students.map((s) => {
-    const certListStr = s.certificates.join('; ');
-    const driveFileNames = s.driveFiles.map((f) => f.name).join('; ');
-    const driveLinks = s.driveFiles
-      .map((f) =>
-        f.webViewLink && f.webViewLink !== '#'
-          ? f.webViewLink
-          : f.id
-          ? `https://drive.google.com/file/d/${f.id}/view?usp=sharing`
-          : ''
-      )
-      .filter(Boolean)
-      .join('; ');
-    const sheetRows = s.sheetRecords.map((r) => `#${r.rowIndex}`).join('; ');
-
-    const driveVal = s.driveUploaded
-      ? options.driveUploadedLabels.trueLabel
-      : options.driveUploadedLabels.falseLabel;
-    const sheetVal = s.sheetUpdated
-      ? options.sheetUpdatedLabels.trueLabel
-      : options.sheetUpdatedLabels.falseLabel;
-    const submittedVal = s.submitted
-      ? options.submittedLabels.trueLabel
-      : options.submittedLabels.falseLabel;
-
-    let overallStatusFormatted: string = s.overallStatus;
-    if (options.statusLabels) {
-      if (s.overallStatus === 'COMPLETED') overallStatusFormatted = options.statusLabels.completed;
-      else if (s.overallStatus === 'PENDING') overallStatusFormatted = options.statusLabels.pending;
-      else overallStatusFormatted = options.statusLabels.notStarted;
-    }
-
-    return [
-      escapeCsvCell(s.rollNo),
-      escapeCsvCell(s.name),
-      s.certificates.length || s.driveFiles.length,
-      escapeCsvCell(certListStr || 'None'),
-      escapeCsvCell(driveVal),
-      escapeCsvCell(sheetVal),
-      escapeCsvCell(submittedVal),
-      escapeCsvCell(overallStatusFormatted),
-      escapeCsvCell(driveFileNames || 'None'),
-      escapeCsvCell(driveLinks || 'None'),
-      escapeCsvCell(sheetRows || 'None'),
-      escapeCsvCell(s.lastUpdated || new Date().toISOString()),
-    ].join(',');
+    return activeColumns.map((col) => escapeCsvCell(col.getValue(s, options))).join(',');
   });
 
   const csv = [headers.join(','), ...rows].join('\n');

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { StudentStatusRecord } from '../types';
 import {
+  ALL_EXPORT_COLUMNS,
   AdvancedExportOptions,
   DEFAULT_ADVANCED_EXPORT_OPTIONS,
   exportAdvancedCustomizedDataCsv,
@@ -48,6 +49,17 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
   const [preset, setPreset] = useState<'yesno' | 'descriptive' | 'passfail' | 'boolean'>('yesno');
   const [activeModalTab, setActiveModalTab] = useState<'customizer' | 'gap_analysis'>('customizer');
   const [gapSearchQuery, setGapSearchQuery] = useState('');
+
+  const toggleColumn = (colId: string) => {
+    if (colId === 'rollNo' || colId === 'name') return;
+    setOptions((prev) => {
+      const isSelected = prev.selectedColumnIds.includes(colId);
+      const newSelected = isSelected
+        ? prev.selectedColumnIds.filter((id) => id !== colId)
+        : [...prev.selectedColumnIds, colId];
+      return { ...prev, selectedColumnIds: newSelected };
+    });
+  };
 
   if (!isOpen) return null;
 
@@ -282,6 +294,31 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-blue-400" />
+                  Customize Column Selection
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {ALL_EXPORT_COLUMNS.map((col) => {
+                    const isMandatory = col.id === 'rollNo' || col.id === 'name';
+                    return (
+                      <label key={col.id} className={`flex items-center gap-2 ${isMandatory ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'} bg-slate-950 p-3 rounded-lg border border-slate-800`}>
+                        <input
+                          type="checkbox"
+                          checked={isMandatory || options.selectedColumnIds.includes(col.id)}
+                          disabled={isMandatory}
+                          onChange={() => toggleColumn(col.id)}
+                          className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-blue-500"
+                        />
+                        <span className="text-[11px] text-slate-300">{col.label} {isMandatory && '*'}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Boolean Input Controls */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-blue-400" />
                   Customize Text Replacement Rules for Export
                 </h3>
 
@@ -444,14 +481,14 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
                   <table className="w-full text-left border-collapse text-xs">
                     <thead className="bg-slate-900/90 border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider sticky top-0">
                       <tr>
-                        <th className="py-2 px-3">#</th>
-                        <th className="py-2 px-3">Roll No</th>
-                        <th className="py-2 px-3">Student Name</th>
-                        <th className="py-2 px-3">Drive Uploaded</th>
-                        <th className="py-2 px-3">Sheet Updated</th>
-                        <th className="py-2 px-3">Admin Confirmed</th>
-                        <th className="py-2 px-3">Overall Status</th>
-                        <th className="py-2 px-3">Drive Files</th>
+                        <th className="py-3 px-4">#</th>
+                        <th className="py-3 px-4">Roll No</th>
+                        <th className="py-3 px-4">Student Name</th>
+                        <th className="py-3 px-4">Drive Uploaded</th>
+                        <th className="py-3 px-4">Sheet Updated</th>
+                        <th className="py-3 px-4">Admin Confirmed</th>
+                        <th className="py-3 px-4">Overall Status</th>
+                        <th className="py-3 px-4">Drive Files</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 font-mono text-[11px] text-slate-300">
