@@ -9,6 +9,7 @@ export interface AuthUser {
 export interface Student {
   rollNo: string;
   name: string;
+  phone?: string;
 }
 
 export interface DriveCertificateFile {
@@ -52,6 +53,7 @@ export interface SheetRowRecord {
   rollNo: string;
   name?: string;
   email?: string;
+  phone?: string;
   certificateType?: string;
   year?: string;
   section?: string;
@@ -69,6 +71,7 @@ export interface ColumnMapping {
   nameCol: string;
   certTypeCol: string;
   emailCol?: string;
+  phoneCol?: string;
   yearCol?: string;
   sectionCol?: string;
   certUrlCol?: string;
@@ -103,6 +106,7 @@ export interface StudentStatusRecord {
   rollNo: string;
   name: string;
   email?: string;
+  phone?: string;
   lastReminded?: string;
   certificates: string[];
   driveUploaded: boolean;
@@ -229,10 +233,20 @@ export interface AutoEmailSchedulerConfig {
   targetAudience: 'ALL_DEFAULTERS' | 'NOT_STARTED_ONLY' | 'COUNT_MISMATCH_ONLY' | 'PENDING_ONLY';
   customTemplateSubject?: string;
   customTemplateBody?: string;
-  deliveryMethod: 'GMAIL_PROMPT' | 'MAILTO_BATCH' | 'WEBHOOK';
+  deliveryMethod: 'GMAIL_PROMPT' | 'MAILTO_BATCH' | 'WEBHOOK' | 'TWILIO_WHATSAPP';
   webhookUrl?: string;
   lastAutoRun?: string;
   autoRunCount?: number;
+}
+
+export interface WhatsAppApiConfig {
+  provider: 'TWILIO' | 'META_CLOUD_API' | 'CUSTOM_WEBHOOK' | 'DIRECT_WA_LINK';
+  twilioAccountSid?: string;
+  twilioAuthToken?: string;
+  twilioWhatsAppFrom?: string; // e.g. whatsapp:+14155238886
+  metaAccessToken?: string;
+  metaPhoneNumberId?: string;
+  webhookUrl?: string;
 }
 
 export interface AppSettings {
@@ -240,6 +254,7 @@ export interface AppSettings {
   enableSpreadsheetWrite: boolean;
   adminEmails: string[];
   autoEmailScheduler?: AutoEmailSchedulerConfig;
+  whatsAppConfig?: WhatsAppApiConfig;
   customFilenameRegex?: string; // Custom regex pattern (e.g. (?<rollNo>[0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2}))
   customCertTypePatterns?: Array<{ type: string; pattern: string }>;
   enableFuzzyNameMatching?: boolean;

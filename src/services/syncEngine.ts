@@ -275,7 +275,7 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
         webViewLink: '#',
       };
     });
-    sheetRows = INITIAL_REFERENCE_CERTIFICATES.slice(0, 24).map((ref, idx) => {
+    sheetRows = INITIAL_REFERENCE_CERTIFICATES.map((ref, idx) => {
       const daysAgo = (idx + 1) % 12;
       const rowDate = new Date(nowMs - daysAgo * 86400000 - (idx * 1800000)).toISOString();
       return {
@@ -566,6 +566,36 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
       if (studentEmail) break;
     }
 
+    if (!studentEmail) {
+      studentEmail = `${student.rollNo.toLowerCase()}@pragati.ac.in`;
+    }
+
+    // Extract student phone number from sheet records or student object
+    let studentPhone: string | undefined = student.phone;
+    for (const r of matchedSheetRows) {
+      if (r.phone && r.phone.trim()) {
+        studentPhone = r.phone.trim();
+        break;
+      }
+      if (r.rawValues) {
+        for (const [key, val] of Object.entries(r.rawValues)) {
+          if (
+            (key.toLowerCase().includes('phone') ||
+              key.toLowerCase().includes('mobile') ||
+              key.toLowerCase().includes('contact') ||
+              key.toLowerCase().includes('whatsapp') ||
+              key.toLowerCase().includes('number')) &&
+            val &&
+            val.trim()
+          ) {
+            studentPhone = val.trim();
+            break;
+          }
+        }
+      }
+      if (studentPhone) break;
+    }
+
     // Overall 3-way status: Completed (all 3 true), Not Started (all 3 false), Pending (otherwise)
     let overallStatus: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
     if (driveUploaded && sheetUpdated && submitted) {
@@ -579,18 +609,30 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     // Certificate Quantity Discrepancy (e.g., 3 in Sheet vs 2 in Drive or vice-versa)
     const driveCount = matchedDriveFiles.length;
     const sheetCount = matchedSheetRows.length;
-    const hasMismatch = (driveCount > 0 || sheetCount > 0) && driveCount !== sheetCount;
+    
+    let hasMismatch = false;
     let mismatchType: 'MORE_IN_SHEET' | 'MORE_IN_DRIVE' | 'EQUAL' = 'EQUAL';
     let mismatchDesc = '';
 
-    if (driveCount > sheetCount) {
+    if (driveCount > 0 && sheetCount > 0 && driveCount !== sheetCount) {
+      hasMismatch = true;
+      if (driveCount > sheetCount) {
+        mismatchType = 'MORE_IN_DRIVE';
+        const diff = driveCount - sheetCount;
+        mismatchDesc = `${driveCount} Drive file${driveCount > 1 ? 's' : ''} uploaded vs ${sheetCount} Sheet response${sheetCount !== 1 ? 's' : ''} (${diff} missing in Google Sheet)`;
+      } else {
+        mismatchType = 'MORE_IN_SHEET';
+        const diff = sheetCount - driveCount;
+        mismatchDesc = `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} logged vs ${driveCount} Drive file${driveCount !== 1 ? 's' : ''} (${diff} missing in Google Drive)`;
+      }
+    } else if (driveCount > 0 && sheetCount === 0 && !sheetUpdated) {
+      hasMismatch = true;
       mismatchType = 'MORE_IN_DRIVE';
-      const diff = driveCount - sheetCount;
-      mismatchDesc = `${driveCount} Drive file${driveCount > 1 ? 's' : ''} uploaded vs ${sheetCount} Sheet response${sheetCount !== 1 ? 's' : ''} (${diff} missing in Google Sheet)`;
-    } else if (sheetCount > driveCount) {
+      mismatchDesc = `${driveCount} Drive file${driveCount > 1 ? 's' : ''} uploaded, but 0 Google Sheet form responses recorded.`;
+    } else if (sheetCount > 0 && driveCount === 0 && !driveUploaded) {
+      hasMismatch = true;
       mismatchType = 'MORE_IN_SHEET';
-      const diff = sheetCount - driveCount;
-      mismatchDesc = `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} logged vs ${driveCount} Drive file${driveCount !== 1 ? 's' : ''} (${diff} missing in Google Drive)`;
+      mismatchDesc = `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} recorded, but 0 Google Drive PDF files uploaded.`;
     }
 
     const countMismatch = {
@@ -606,6 +648,7 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
       rollNo: student.rollNo,
       name: student.name,
       email: studentEmail,
+      phone: studentPhone,
       certificates: Array.from(certNamesSet),
       driveUploaded,
       sheetUpdated,

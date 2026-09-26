@@ -44,6 +44,7 @@ import {
 } from '../types';
 import { isStudentMatchingDateRange, getLatestStudentActivity } from '../utils/dateFilterUtils';
 import { DataMismatchSection } from './DataMismatchSection';
+import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 
 interface StudentTableProps {
   students: StudentStatusRecord[];
@@ -1505,21 +1506,33 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
                       {/* Overall Status Badge */}
                       <td className="py-3.5 px-4 text-center">
-                        {student.overallStatus === 'COMPLETED' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-600 shadow-sm shadow-emerald-900/40">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                            COMPLETED
-                          </span>
-                        ) : student.overallStatus === 'PENDING' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-950/80 text-amber-300 border border-amber-700/70">
-                            <Clock className="w-3.5 h-3.5 text-amber-400" />
-                            PENDING
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-950 text-slate-400 border border-slate-800">
-                            NOT STARTED
-                          </span>
-                        )}
+                        <div className="flex flex-col items-center gap-1">
+                          {student.overallStatus === 'COMPLETED' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-600 shadow-sm shadow-emerald-900/40">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              COMPLETED
+                            </span>
+                          ) : student.overallStatus === 'PENDING' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-950/80 text-amber-300 border border-amber-700/70">
+                              <Clock className="w-3.5 h-3.5 text-amber-400" />
+                              PENDING
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-950 text-slate-400 border border-slate-800">
+                              NOT STARTED
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleToggleExpand(student.rollNo)}
+                            className="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-semibold rounded-md flex items-center gap-1 transition cursor-pointer"
+                            title="Inspect real drive and sheet proof evidence for this student"
+                          >
+                            <Eye className="w-2.5 h-2.5 text-blue-400" />
+                            <span>{isExpanded ? 'Hide Proof' : 'View Proof'}</span>
+                          </button>
+                        </div>
                       </td>
 
                       {/* Latest Activity Timestamp Cell */}
@@ -1649,10 +1662,13 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                       </td>
                     </tr>
 
-                    {/* Expanded Row Certificate Breakdown */}
+                    {/* Expanded Row Certificate & Real Discrepancy Breakdown */}
                     {isExpanded && (
                       <tr className="bg-slate-950/90 border-b border-purple-900/60">
-                        <td colSpan={9} className="p-4">
+                        <td colSpan={9} className="p-4 space-y-3">
+                          {/* Real Discrepancy Audit Proof Card */}
+                          <DiscrepancyProofCard student={student} onOpenEmailReminder={onOpenEmailReminder} />
+
                           <div className="bg-slate-900/90 border border-purple-800/50 rounded-2xl p-4 space-y-3 shadow-inner">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                               <div className="flex items-center gap-2">

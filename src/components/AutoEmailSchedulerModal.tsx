@@ -118,7 +118,7 @@ export const AutoEmailSchedulerModal: React.FC<AutoEmailSchedulerModalProps> = (
               recipients: targetedStudents.map((s) => ({
                 rollNo: s.rollNo,
                 name: s.name,
-                email: s.email || `${s.rollNo.toLowerCase()}@aec.edu.in`,
+                email: s.email || `${s.rollNo.toLowerCase()}@pragati.ac.in`,
                 status: s.overallStatus,
                 mismatch: s.countMismatch?.description || null,
               })),
@@ -304,8 +304,13 @@ export const AutoEmailSchedulerModal: React.FC<AutoEmailSchedulerModalProps> = (
             <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
               Automated Dispatch Protocol:
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
               {[
+                {
+                  id: 'TWILIO_WHATSAPP',
+                  label: 'Twilio WhatsApp API',
+                  desc: 'Direct REST API dispatches to student WhatsApp numbers',
+                },
                 {
                   id: 'GMAIL_PROMPT',
                   label: 'Gmail Web Queue',
@@ -318,7 +323,7 @@ export const AutoEmailSchedulerModal: React.FC<AutoEmailSchedulerModalProps> = (
                 },
                 {
                   id: 'WEBHOOK',
-                  label: 'Webhook / Cloud Endpoint',
+                  label: 'Webhook / Endpoint',
                   desc: 'POST payload to Google Apps Script / Zapier / LMS',
                 },
               ].map((item) => (

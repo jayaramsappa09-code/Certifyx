@@ -20,8 +20,15 @@ import {
   HardDrive,
   Info,
   ShieldAlert,
+  MessageCircle,
+  Share2,
+  Phone,
+  Settings,
+  Smartphone,
 } from 'lucide-react';
-import { StudentStatusRecord, GoogleDriveFolderConfig, GoogleSheetConfig } from '../types';
+import { StudentStatusRecord, GoogleDriveFolderConfig, GoogleSheetConfig, WhatsAppApiConfig } from '../types';
+import { getAppSettings, saveAppSettings } from '../services/storageService';
+import { sendWhatsAppNotice, normalizePhoneNumber } from '../services/whatsAppService';
 
 interface EmailReminderModalProps {
   isOpen: boolean;
@@ -44,6 +51,32 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
   onRecordAuditLog,
   onToast,
 }) => {
+  // Dispatch Channel: 'EMAIL' | 'WHATSAPP' | 'BOTH'
+  const [dispatchChannel, setDispatchChannel] = useState<'EMAIL' | 'WHATSAPP' | 'BOTH'>('EMAIL');
+
+  // Custom inline phone numbers state: rollNo -> custom phone
+  const [customPhones, setCustomPhones] = useState<Record<string, string>>({});
+  const [editingPhoneRollNo, setEditingPhoneRollNo] = useState<string | null>(null);
+  const [tempPhoneInput, setTempPhoneInput] = useState('');
+
+  // WhatsApp API Settings Modal Drawer toggle & state
+  const [showWhatsAppSettings, setShowWhatsAppSettings] = useState(false);
+  const [whatsAppConfig, setWhatsAppConfig] = useState<WhatsAppApiConfig>(() => {
+    return getAppSettings().whatsAppConfig || {
+      provider: 'DIRECT_WA_LINK',
+      twilioAccountSid: '',
+      twilioAuthToken: '',
+      twilioWhatsAppFrom: 'whatsapp:+14155238886',
+      metaAccessToken: '',
+      metaPhoneNumberId: '',
+      webhookUrl: '',
+    };
+  });
+
+  // Batch WhatsApp API Sending progress state
+  const [isBatchSendingWhatsApp, setIsBatchSendingWhatsApp] = useState(false);
+  const [whatsAppProgress, setWhatsAppProgress] = useState<{ current: number; total: number; successCount: number; errors: string[] } | null>(null);
+
   // Filter: 'ALL' (Not Started + Pending), 'NOT_STARTED', 'PENDING'
   const [filterType, setFilterType] = useState<'ALL' | 'NOT_STARTED' | 'PENDING'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -219,8 +252,44 @@ Verification Team`
         }
       }
     }
-    // Fallback: university student email template
-    return `${student.rollNo.toLowerCase()}@aec.edu.in`;
+    // Fallback: university student email template (Pragati Engineering College)
+    return `${student.rollNo.toLowerCase()}@pragati.ac.in`;
+  };
+
+  // Resolve phone number for a student from roster, sheet records, or custom overrides
+  const getStudentPhone = (student: StudentStatusRecord): string => {
+    if (customPhones[student.rollNo]) {
+      return customPhones[student.rollNo];
+    }
+    if (student.phone) {
+      return student.phone;
+    }
+    // Check in sheet records
+    for (const r of student.sheetRecords || []) {
+      if (r.phone) return r.phone;
+      if (r.rawValues) {
+        for (const [k, v] of Object.entries(r.rawValues)) {
+          if (
+            (k.toLowerCase().includes('phone') ||
+              k.toLowerCase().includes('mobile') ||
+              k.toLowerCase().includes('contact') ||
+              k.toLowerCase().includes('whatsapp') ||
+              k.toLowerCase().includes('number')) &&
+            v &&
+            v.trim()
+          ) {
+            return v.trim();
+          }
+        }
+      }
+    }
+    return '';
+  };
+
+  const handleSavePhone = (rollNo: string) => {
+    setCustomPhones((prev) => ({ ...prev, [rollNo]: tempPhoneInput.trim() }));
+    setEditingPhoneRollNo(null);
+    onToast?.(`Updated phone number for student ${rollNo}`, 'success');
   };
 
   const getMissingItemsDescription = (student: StudentStatusRecord): string => {
@@ -469,6 +538,185 @@ Academic Certification & Verification Committee`;
     onToast?.(`Triggered mail client with ${selectedStudentsList.length} recipients.`, 'info');
   };
 
+  // Format WhatsApp Individual Notice
+  const formatWhatsAppIndividual = (student: StudentStatusRecord): string => {
+    const missingItems = getMissingItemsDescription(student);
+    const discrepancy = student.countMismatch && student.countMismatch.hasMismatch
+      ? `\n⚠️ *Discrepancy:* ${student.countMismatch.description}`
+      : '';
+
+    return (
+      `*📢 ACADEMIC CERTIFICATE NOTICE*\n\n` +
+      `Hello *${student.name}* (Roll: \`${student.rollNo}\`),\n\n` +
+      `This is an official administrative reminder regarding your pending certificate submission for the class roster.\n\n` +
+      `*Status:* ${student.overallStatus}\n` +
+      `*Action Required:*\n${missingItems}${discrepancy}\n\n` +
+      `*Official Submission Links:*\n` +
+      `📁 Google Drive Upload: ${driveFolderUrl}\n` +
+      `📋 Google Sheet Form: ${sheetUrl}\n\n` +
+      `_Please complete your pending upload/response immediately._\n` +
+      `- Academic Certification Committee`
+    );
+  };
+
+  // Launch WhatsApp for single student (API or Deep-link)
+  const handleOpenWhatsAppIndividual = async (student: StudentStatusRecord) => {
+    const message = formatWhatsAppIndividual(student);
+    const phoneNumber = getStudentPhone(student);
+
+    if (!phoneNumber && whatsAppConfig.provider !== 'CUSTOM_WEBHOOK') {
+      onToast?.(`Missing phone number for ${student.name}. Please enter a phone number inline.`, 'error');
+      setEditingPhoneRollNo(student.rollNo);
+      return;
+    }
+
+    const res = await sendWhatsAppNotice(phoneNumber, message, whatsAppConfig);
+
+    if (res.success) {
+      if (res.mode === 'DEEPLINK' && res.deeplinkUrl) {
+        window.open(res.deeplinkUrl, '_blank', 'noopener,noreferrer');
+        onToast?.(`Opened WhatsApp Web notice for ${student.name}`, 'success');
+      } else {
+        onToast?.(`Dispatched WhatsApp notice via ${res.mode} API to ${student.name}`, 'success');
+      }
+      onRecordAuditLog?.(
+        'WhatsApp Reminder Sent',
+        `Dispatched WhatsApp notice via ${res.mode} for ${student.name} (${student.rollNo})`
+      );
+    } else {
+      onToast?.(`WhatsApp dispatch failed: ${res.error}`, 'error');
+    }
+  };
+
+  // Save WhatsApp API configuration
+  const handleSaveWhatsAppConfig = (newConfig: WhatsAppApiConfig) => {
+    setWhatsAppConfig(newConfig);
+    saveAppSettings({ whatsAppConfig: newConfig });
+    setShowWhatsAppSettings(false);
+    onToast?.(`WhatsApp API settings (${newConfig.provider}) saved successfully!`, 'success');
+    onRecordAuditLog?.('WhatsApp API Settings Saved', `Provider set to ${newConfig.provider}`);
+  };
+
+  // Dispatch Batch WhatsApp Notices via Twilio / Meta / Webhook / Deeplink
+  const handleBatchSendWhatsAppApi = async () => {
+    const selectedList = students.filter((s) => selectedRollNos.has(s.rollNo));
+    if (selectedList.length === 0) {
+      onToast?.('Please select at least one student recipient.', 'error');
+      return;
+    }
+
+    setIsBatchSendingWhatsApp(true);
+    setWhatsAppProgress({ current: 0, total: selectedList.length, successCount: 0, errors: [] });
+
+    let successCount = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < selectedList.length; i++) {
+      const student = selectedList[i];
+      const phone = getStudentPhone(student);
+      const message = formatWhatsAppIndividual(student);
+
+      setWhatsAppProgress({
+        current: i + 1,
+        total: selectedList.length,
+        successCount,
+        errors,
+      });
+
+      if (!phone && whatsAppConfig.provider !== 'CUSTOM_WEBHOOK') {
+        errors.push(`${student.rollNo} (${student.name}): Missing phone number`);
+        continue;
+      }
+
+      const res = await sendWhatsAppNotice(phone, message, whatsAppConfig);
+
+      if (res.success) {
+        successCount++;
+        if (res.mode === 'DEEPLINK' && res.deeplinkUrl) {
+          window.open(res.deeplinkUrl, '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        errors.push(`${student.rollNo} (${student.name}): ${res.error || 'Failed'}`);
+      }
+
+      // Small delay between calls
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+
+    setIsBatchSendingWhatsApp(false);
+    onRecordAuditLog?.(
+      'Batch WhatsApp Dispatch',
+      `Sent ${successCount} of ${selectedList.length} WhatsApp notices via ${whatsAppConfig.provider || 'WhatsApp'}`
+    );
+
+    if (errors.length > 0) {
+      onToast?.(`Sent ${successCount} WhatsApp notices (${errors.length} failed/missing phone).`, 'info');
+    } else {
+      onToast?.(`Successfully dispatched all ${successCount} WhatsApp notices!`, 'success');
+    }
+  };
+
+  // Format Class WhatsApp Group Broadcast Bulletin
+  const formatWhatsAppGroupBroadcast = (): string => {
+    const selectedList = students.filter((s) => selectedRollNos.has(s.rollNo));
+    let msg = `*📢 URGENT CLASS NOTICE: CERTIFICATE SUBMISSION STATUS*\n\n` +
+      `Attention All Students & Class Representatives,\n\n` +
+      `The following *${selectedList.length} student(s)* currently have pending certificate requirements (Missing Drive Upload / Google Form response / Discrepancy):\n\n`;
+
+    selectedList.forEach((s, idx) => {
+      let tag = '❌ Not Started';
+      if (s.overallStatus === 'PENDING') {
+        if (!s.driveUploaded && s.sheetUpdated) tag = '⚠️ Missing Drive File';
+        else if (s.driveUploaded && !s.sheetUpdated) tag = '⚠️ Missing Sheet Form';
+        else if (s.countMismatch?.hasMismatch) tag = `⚠️ Count Mismatch (${s.countMismatch.driveCount} Drive vs ${s.countMismatch.sheetCount} Sheet)`;
+        else tag = '⏳ Pending Verification';
+      }
+      msg += `${idx + 1}. *${s.rollNo}* - ${s.name} [${tag}]\n`;
+    });
+
+    msg += `\n*🔗 Official Links:*\n` +
+      `📁 *Drive Folder:* ${driveFolderUrl}\n` +
+      `📋 *Sheet Form:* ${sheetUrl}\n\n` +
+      `_Please clear your pending submissions today to achieve 100% compliance._\n` +
+      `- Academic Certification & Verification Committee`;
+    return msg;
+  };
+
+  // Launch WhatsApp Class Group Broadcast
+  const handleOpenWhatsAppGroupBroadcast = () => {
+    const selectedList = students.filter((s) => selectedRollNos.has(s.rollNo));
+    if (selectedList.length === 0) {
+      onToast?.('Please select at least one student recipient.', 'error');
+      return;
+    }
+
+    const message = formatWhatsAppGroupBroadcast();
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+
+    const link = document.createElement('a');
+    link.href = waUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    onRecordAuditLog?.(
+      'WhatsApp Group Broadcast Triggered',
+      `Generated and launched WhatsApp class notice for ${selectedList.length} students`
+    );
+    onToast?.(`Opened WhatsApp with formatted class broadcast notice!`, 'success');
+  };
+
+  // Copy WhatsApp Broadcast Notice
+  const handleCopyWhatsAppBroadcast = () => {
+    const message = formatWhatsAppGroupBroadcast();
+    navigator.clipboard.writeText(message);
+    setCopiedKey('whatsapp');
+    setTimeout(() => setCopiedKey(null), 2500);
+    onToast?.(`Copied formatted WhatsApp notice for ${selectedCount} student(s) to clipboard!`, 'success');
+  };
+
   // Copy selected emails
   const handleCopyEmails = () => {
     const selectedStudentsList = students.filter((s) => selectedRollNos.has(s.rollNo));
@@ -537,6 +785,61 @@ Academic Certification & Verification Committee`;
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Student List & Selection (7 cols) */}
           <div className="lg:col-span-7 space-y-4">
+            {/* Dispatch Channel Selector Toggle Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-950 border border-slate-800 rounded-2xl">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setDispatchChannel('EMAIL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                    dispatchChannel === 'EMAIL'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>Email</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDispatchChannel('WHATSAPP')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                    dispatchChannel === 'WHATSAPP'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  }`}
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDispatchChannel('BOTH')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                    dispatchChannel === 'BOTH'
+                      ? 'bg-gradient-to-r from-blue-600 to-emerald-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Both (Email + WA)</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowWhatsAppSettings(true)}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                title="Configure Twilio / Meta WhatsApp API credentials"
+              >
+                <Settings className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">WhatsApp API:</span>
+                <strong className="text-emerald-300 font-mono text-[11px]">{whatsAppConfig.provider || 'DIRECT_WA_LINK'}</strong>
+              </button>
+            </div>
+
             {/* Status Filter Tabs */}
             <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-950 border border-slate-800 rounded-2xl text-xs font-semibold">
               <button
@@ -636,7 +939,9 @@ Academic Certification & Verification Committee`;
                   const isSelected = selectedRollNos.has(s.rollNo);
                   const isPreviewed = activePreviewStudent?.rollNo === s.rollNo;
                   const currentEmail = getStudentEmail(s);
+                  const currentPhone = getStudentPhone(s);
                   const isCustom = Boolean(customEmails[s.rollNo]);
+                  const isPhoneCustom = Boolean(customPhones[s.rollNo]);
                   const isFromSheet = Boolean(s.email);
 
                   return (
@@ -743,6 +1048,61 @@ Academic Certification & Verification Committee`;
                             </div>
                           )}
 
+                          {/* Phone row with inline edit (visible when WhatsApp or BOTH mode is selected) */}
+                          {(dispatchChannel === 'WHATSAPP' || dispatchChannel === 'BOTH') && (
+                            <div className="w-full pt-1 border-t border-slate-900/80 mt-1 flex items-center justify-between gap-2">
+                              {editingPhoneRollNo === s.rollNo ? (
+                                <div className="flex items-center gap-1.5 w-full">
+                                  <input
+                                    type="tel"
+                                    value={tempPhoneInput}
+                                    onChange={(e) => setTempPhoneInput(e.target.value)}
+                                    placeholder="+919876543210 or 9876543210"
+                                    className="bg-slate-900 border border-emerald-500 rounded px-2 py-0.5 text-xs text-white flex-1 focus:outline-none font-mono"
+                                    autoFocus
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSavePhone(s.rollNo)}
+                                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingPhoneRollNo(null)}
+                                    className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded text-[10px]"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                                  <span className="text-emerald-300/90 font-mono flex items-center gap-1">
+                                    <Phone className="w-3 h-3 text-emerald-500" />
+                                    {currentPhone || <em className="text-slate-500 italic">No Phone Number</em>}
+                                  </span>
+                                  {isPhoneCustom && (
+                                    <span className="px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800 text-[9px]">
+                                      Edited Phone
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingPhoneRollNo(s.rollNo);
+                                      setTempPhoneInput(currentPhone);
+                                    }}
+                                    className="text-slate-500 hover:text-emerald-300 transition"
+                                    title="Edit student phone number"
+                                  >
+                                    <Edit2 className="w-2.5 h-2.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {/* Quick 1-click single student actions */}
                           <div className="flex items-center gap-1 shrink-0">
                             <button
@@ -756,6 +1116,16 @@ Academic Certification & Verification Committee`;
                               title="Preview personalized email for this student"
                             >
                               <Eye className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenWhatsAppIndividual(s)}
+                              className="px-2 py-1 bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 text-emerald-300 rounded text-[10px] font-semibold flex items-center gap-1 transition cursor-pointer"
+                              title="Send personalized reminder notice via WhatsApp"
+                            >
+                              <MessageCircle className="w-2.5 h-2.5 text-emerald-400" />
+                              <span>WhatsApp</span>
                             </button>
 
                             <button
@@ -1020,6 +1390,16 @@ Academic Certification & Verification Committee`;
 
                     <button
                       type="button"
+                      onClick={() => handleOpenWhatsAppIndividual(activePreviewStudent)}
+                      className="px-2.5 py-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                      title="Open WhatsApp chat with prefilled personalized message"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>WhatsApp</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => handleOpenMailto(activePreviewStudent)}
                       className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1 transition cursor-pointer"
                       title="Open default system mail client"
@@ -1058,6 +1438,51 @@ Academic Certification & Verification Committee`;
           </div>
 
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            {/* WhatsApp Group Broadcast Actions */}
+            <button
+              type="button"
+              onClick={handleCopyWhatsAppBroadcast}
+              disabled={selectedCount === 0}
+              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1.5 border border-slate-700"
+              title="Copy formatted WhatsApp notice for class group to clipboard"
+            >
+              {copiedKey === 'whatsapp' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-emerald-400" />}
+              <span>Copy WhatsApp Text</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenWhatsAppGroupBroadcast}
+              disabled={selectedCount === 0}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer"
+              title="Open WhatsApp Web or WhatsApp Desktop app with formatted class notice for all selected defaulters"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Broadcast to Group ({selectedCount})</span>
+            </button>
+
+            {(dispatchChannel === 'WHATSAPP' || dispatchChannel === 'BOTH') && (
+              <button
+                type="button"
+                onClick={handleBatchSendWhatsAppApi}
+                disabled={selectedCount === 0 || isBatchSendingWhatsApp}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-emerald-600/20 flex items-center gap-2 cursor-pointer"
+                title="Dispatch WhatsApp notices directly via WhatsApp API (Twilio / Meta / Webhook)"
+              >
+                {isBatchSendingWhatsApp ? (
+                  <>
+                    <Sparkles className="w-4 h-4 animate-spin text-white" />
+                    <span>Dispatching ({whatsAppProgress?.current}/{whatsAppProgress?.total})...</span>
+                  </>
+                ) : (
+                  <>
+                    <Smartphone className="w-4 h-4" />
+                    <span>Batch WhatsApp API ({selectedCount})</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleCopyEmails}
@@ -1065,18 +1490,7 @@ Academic Certification & Verification Committee`;
               className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1.5"
             >
               {copiedKey === 'emails' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>Copy Recipient Emails</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleBatchSendMailto}
-              disabled={selectedCount === 0}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1.5"
-              title="Launch default email client with all recipients in BCC"
-            >
-              <Mail className="w-3.5 h-3.5 text-blue-400" />
-              <span>Mail Client (BCC)</span>
+              <span>Copy Emails</span>
             </button>
 
             <button
@@ -1092,6 +1506,143 @@ Academic Certification & Verification Committee`;
           </div>
         </div>
       </div>
+
+      {/* WhatsApp API Configuration Drawer Modal */}
+      {showWhatsAppSettings && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowWhatsAppSettings(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150"
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white">WhatsApp Business / Twilio API Setup</h3>
+              </div>
+              <button
+                onClick={() => setShowWhatsAppSettings(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Select WhatsApp Dispatch Provider</label>
+                <select
+                  value={whatsAppConfig.provider}
+                  onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, provider: e.target.value as any })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-medium"
+                >
+                  <option value="DIRECT_WA_LINK">WhatsApp Web / App Deep-link (Free, No API Keys required)</option>
+                  <option value="TWILIO">Twilio WhatsApp Business API</option>
+                  <option value="META_CLOUD_API">Meta WhatsApp Cloud API</option>
+                  <option value="CUSTOM_WEBHOOK">Custom WhatsApp Gateway Webhook</option>
+                </select>
+              </div>
+
+              {whatsAppConfig.provider === 'TWILIO' && (
+                <div className="space-y-2.5 bg-slate-950 border border-slate-800 rounded-2xl p-3.5">
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Twilio Account SID</label>
+                    <input
+                      type="text"
+                      placeholder="ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                      value={whatsAppConfig.twilioAccountSid || ''}
+                      onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, twilioAccountSid: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Twilio Auth Token</label>
+                    <input
+                      type="password"
+                      placeholder="Your Twilio Auth Token"
+                      value={whatsAppConfig.twilioAuthToken || ''}
+                      onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, twilioAuthToken: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Twilio WhatsApp From Number</label>
+                    <input
+                      type="text"
+                      placeholder="whatsapp:+14155238886"
+                      value={whatsAppConfig.twilioWhatsAppFrom || 'whatsapp:+14155238886'}
+                      onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, twilioWhatsAppFrom: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {whatsAppConfig.provider === 'META_CLOUD_API' && (
+                <div className="space-y-2.5 bg-slate-950 border border-slate-800 rounded-2xl p-3.5">
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Meta Phone Number ID</label>
+                    <input
+                      type="text"
+                      placeholder="100654321098765"
+                      value={whatsAppConfig.metaPhoneNumberId || ''}
+                      onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, metaPhoneNumberId: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Meta Access Token (Bearer)</label>
+                    <input
+                      type="password"
+                      placeholder="EAAG..."
+                      value={whatsAppConfig.metaAccessToken || ''}
+                      onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, metaAccessToken: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {whatsAppConfig.provider === 'CUSTOM_WEBHOOK' && (
+                <div className="space-y-2.5 bg-slate-950 border border-slate-800 rounded-2xl p-3.5">
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[11px] mb-1">Custom Webhook Endpoint URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://your-api.com/whatsapp/send"
+                      value={whatsAppConfig.webhookUrl || ''}
+                      onChange={(e) => setWhatsAppConfig({ ...whatsAppConfig, webhookUrl: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-[11px] text-emerald-200">
+                💡 Phone numbers are extracted directly from student roster entries and Google Form responses. You can also edit individual phone numbers inline in the student list.
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowWhatsAppSettings(false)}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveWhatsAppConfig(whatsAppConfig)}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20"
+              >
+                Save API Config
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

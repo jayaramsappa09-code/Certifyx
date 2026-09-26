@@ -20,10 +20,12 @@ import {
   Mail,
   History,
   AlertTriangle,
+  MessageCircle,
 } from 'lucide-react';
 import { StudentStatusRecord, DriveCertificateFile } from '../types';
 import { CertificateThumbnail } from './ManualReviewQueue';
 import { getStudentActivityEvents } from '../utils/dateFilterUtils';
+import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 
 interface StudentDetailModalProps {
   student: StudentStatusRecord | null;
@@ -267,66 +269,8 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Certificate Quantity Discrepancy Alert & Reconciliation Card */}
-          {student.countMismatch && student.countMismatch.hasMismatch && (
-            <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 space-y-3 animate-in fade-in">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
-                    <AlertTriangle className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-amber-200 flex items-center gap-2">
-                      <span>Quantity Discrepancy Detected</span>
-                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        {student.countMismatch.sheetCount} in Sheet vs {student.countMismatch.driveCount} in Drive
-                      </span>
-                    </h4>
-                    <p className="text-xs text-amber-300/90 mt-1">
-                      {student.countMismatch.description}
-                    </p>
-                  </div>
-                </div>
-
-                {onOpenEmailReminder && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenEmailReminder(student)}
-                    className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0"
-                  >
-                    <Mail className="w-3.5 h-3.5" />
-                    <span>Email Student</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Resolution Guide */}
-              <div className="bg-slate-950/60 rounded-xl p-3 border border-amber-900/40 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="space-y-1">
-                  <span className="font-semibold text-slate-300 flex items-center gap-1.5">
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                    Google Sheet ({student.countMismatch.sheetCount} entries)
-                  </span>
-                  <p className="text-[11px] text-slate-400">
-                    {student.countMismatch.type === 'MORE_IN_SHEET'
-                      ? `Student logged ${student.countMismatch.difference} more response(s) in the form than PDF files uploaded in Drive.`
-                      : 'All Sheet entries have corresponding or extra Drive files.'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <span className="font-semibold text-slate-300 flex items-center gap-1.5">
-                    <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
-                    Google Drive ({student.countMismatch.driveCount} files)
-                  </span>
-                  <p className="text-[11px] text-slate-400">
-                    {student.countMismatch.type === 'MORE_IN_DRIVE'
-                      ? `Student uploaded ${student.countMismatch.difference} more certificate file(s) than rows registered in Google Sheet.`
-                      : 'Ensure student uploads missing certificates to the shared Drive folder.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Real Discrepancy & Proof Evidence Section */}
+          <DiscrepancyProofCard student={student} onOpenEmailReminder={onOpenEmailReminder} />
 
           {/* Unified Certificate Tracker Section */}
           <div className="space-y-3">
