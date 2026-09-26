@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   ExternalLink,
@@ -21,11 +21,16 @@ import {
   History,
   AlertTriangle,
   MessageCircle,
+  UploadCloud,
 } from 'lucide-react';
 import { StudentStatusRecord, DriveCertificateFile } from '../types';
 import { CertificateThumbnail } from './ManualReviewQueue';
 import { getStudentActivityEvents } from '../utils/dateFilterUtils';
 import { DiscrepancyProofCard } from './DiscrepancyProofCard';
+import {
+  uploadCertificateFileToSupabase,
+  listUploadedCertificatesForStudent,
+} from '../services/supabaseClient';
 
 interface StudentDetailModalProps {
   student: StudentStatusRecord | null;
@@ -45,6 +50,57 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   onOpenEmailReminder,
 }) => {
   const [copiedFileId, setCopiedFileId] = useState<string | null>(null);
+  const [supabaseCerts, setSupabaseCerts] = useState<Array<{ name: string; url: string; size: number; uploadedAt: string }>>([]);
+  const [loadingSupabaseCerts, setLoadingSupabaseCerts] = useState(false);
+  const [isUploadingToSupabase, setIsUploadingToSupabase] = useState(false);
+  const [selectedCertType, setSelectedCertType] = useState('Course_Certificate');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const fetchSupabaseCerts = async () => {
+    if (!student) return;
+    setLoadingSupabaseCerts(true);
+    try {
+      const list = await listUploadedCertificatesForStudent(student.rollNo);
+      if (list) {
+        setSupabaseCerts(list);
+      }
+    } catch (e) {
+      console.error('Failed to list Supabase certificates:', e);
+    } finally {
+      setLoadingSupabaseCerts(false);
+    }
+  };
+
+  useEffect(() => {
+    if (student) {
+      fetchSupabaseCerts();
+    }
+  }, [student?.rollNo]);
+
+  const handleFileUploadToSupabase = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !student) return;
+
+    setIsUploadingToSupabase(true);
+    setErrorMessage(null);
+
+    try {
+      const publicUrl = await uploadCertificateFileToSupabase(file, student.rollNo, selectedCertType);
+      if (publicUrl) {
+        // Toggle driveUploaded to true if it is currently false
+        if (!student.driveUploaded && onToggleDriveUploaded) {
+          onToggleDriveUploaded(student.rollNo, false);
+        }
+        await fetchSupabaseCerts();
+      } else {
+        setErrorMessage('Failed to upload file. Check your Supabase configuration.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'An error occurred during upload.');
+    } finally {
+      setIsUploadingToSupabase(false);
+    }
+  };
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -450,6 +506,97 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 ))}
               </div>
             )}
+
+            {/* Supabase Cloud Certificate Storage Vault */}
+            <div className="mt-4 p-4 bg-slate-950/40 border border-slate-800 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <UploadCloud className="w-4 h-4" />
+                  <span>Supabase Cloud Storage Vault</span>
+                </h4>
+                <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-2.5 py-0.5 rounded-full font-mono font-bold">
+                  Secure Storage Bucket
+                </span>
+              </div>
+
+              {/* Upload Form */}
+              <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                      Certificate Category:
+                    </label>
+                    <select
+                      value={selectedCertType}
+                      onChange={(e) => setSelectedCertType(e.target.value)}
+                      className="w-full bg-slate-950 text-xs text-slate-200 border border-slate-850 rounded-lg p-2 focus:ring-1 focus:ring-emerald-500 outline-none"
+                    >
+                      <option value="Course_Certificate">Course Certificate</option>
+                      <option value="Hackathon_Participation">Hackathon Participation</option>
+                      <option value="Internship_Offer_Letter">Internship Offer Letter</option>
+                      <option value="Technical_Workshop">Technical Workshop</option>
+                      <option value="Paper_Presentation">Paper Presentation</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-end justify-start sm:justify-end shrink-0 pt-2 sm:pt-0">
+                    <label className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-emerald-600/20 cursor-pointer w-full text-center justify-center">
+                      <UploadCloud className="w-4 h-4" />
+                      <span>{isUploadingToSupabase ? 'Uploading...' : 'Upload to Supabase'}</span>
+                      <input
+                        type="file"
+                        accept=".pdf,image/png,image/jpeg"
+                        onChange={handleFileUploadToSupabase}
+                        disabled={isUploadingToSupabase}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {errorMessage && (
+                  <p className="text-[11px] text-rose-400 font-medium font-mono">{errorMessage}</p>
+                )}
+              </div>
+
+              {/* Uploaded Files List */}
+              {loadingSupabaseCerts ? (
+                <div className="text-center py-4 text-xs text-slate-500">
+                  Loading files from Supabase bucket...
+                </div>
+              ) : supabaseCerts.length === 0 ? (
+                <p className="text-xs text-slate-500 italic text-center py-2">
+                  No files uploaded to Supabase Storage yet. Upload one above to get a secure public URL!
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+                    Uploaded Files ({supabaseCerts.length})
+                  </div>
+                  <div className="divide-y divide-slate-800/50 bg-slate-950/80 rounded-xl border border-slate-800/60 overflow-hidden">
+                    {supabaseCerts.map((f, i) => (
+                      <div key={i} className="p-3 flex items-center justify-between gap-3 text-xs">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-slate-200 truncate">{f.name}</p>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                            Uploaded: {new Date(f.uploadedAt).toLocaleString()} • Size: {(f.size / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                        <a
+                          href={f.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1.5 bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-800 rounded-lg text-[11px] font-semibold flex items-center gap-1 shrink-0 transition"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>View Public Link</span>
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Chronological Submission & Verification Activity Timeline */}

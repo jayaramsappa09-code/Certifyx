@@ -525,3 +525,105 @@ export function subscribeToStudentStatusesRealtime(
   };
 }
 
+/**
+ * Upload certificate file to Supabase Storage bucket 'student-certificates'
+ * Custom paths are organized per student roll number.
+ */
+export async function uploadCertificateFileToSupabase(
+  file: File,
+  rollNo: string,
+  certType: string
+): Promise<string | null> {
+  const client = getSupabaseClient();
+  if (!client) {
+    console.warn('Supabase is not configured; skipping storage upload.');
+    return null;
+  }
+
+  const cleanRollNo = rollNo.toUpperCase().trim();
+  const cleanCertType = certType.replace(/[^a-zA-Z0-9]/g, '_');
+  const timestamp = Date.now();
+  const fileExtension = file.name.split('.').pop() || 'pdf';
+  const filePath = `${cleanRollNo}/${cleanCertType}_${timestamp}.${fileExtension}`;
+
+  try {
+    // 1. Check or initialize bucket (ignore if already exists or fails)
+    try {
+      await client.storage.createBucket('student-certificates', {
+        public: true,
+        allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
+        fileSizeLimit: 10485760, // 10MB
+      });
+    } catch {
+      // Bucket likely already exists, swallow
+    }
+
+    // 2. Upload file
+    const { error: uploadError } = await client.storage
+      .from('student-certificates')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error('Supabase storage upload error:', uploadError);
+      return null;
+    }
+
+    // 3. Retrieve public URL
+    const { data } = client.storage
+      .from('student-certificates')
+      .getPublicUrl(filePath);
+
+    return data?.publicUrl || null;
+  } catch (err) {
+    console.error('Failed to upload file to Supabase Storage:', err);
+    return null;
+  }
+}
+
+/**
+ * List all uploaded files for a specific student's roll number from Supabase Storage
+ */
+export async function listUploadedCertificatesForStudent(
+  rollNo: string
+): Promise<Array<{ name: string; url: string; size: number; uploadedAt: string }> | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const cleanRollNo = rollNo.toUpperCase().trim();
+
+  try {
+    const { data: files, error } = await client.storage
+      .from('student-certificates')
+      .list(cleanRollNo, {
+        limit: 100,
+        sortBy: { column: 'name', order: 'desc' },
+      });
+
+    if (error) {
+      console.warn('Failed to list files from Supabase Storage:', error);
+      return null;
+    }
+
+    if (!files) return [];
+
+    return files.map((file) => {
+      const { data } = client.storage
+        .from('student-certificates')
+        .getPublicUrl(`${cleanRollNo}/${file.name}`);
+
+      return {
+        name: file.name,
+        url: data?.publicUrl || '',
+        size: file.metadata?.size || 0,
+        uploadedAt: file.created_at || new Date().toISOString(),
+      };
+    });
+  } catch (err) {
+    console.error('Error listing files from Supabase:', err);
+    return null;
+  }
+}
+
