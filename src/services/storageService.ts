@@ -29,6 +29,7 @@ const STORAGE_KEYS = {
   SHEET_PROOF: 'ccam_last_sheet_sync_proof',
   PENDING_UPDATES: 'ccam_offline_pending_updates',
   DYNAMIC_ROSTER: 'ccam_dynamic_roster',
+  THEME: 'ccam_theme_preference',
 };
 
 // 1. Submitted status (Map: normalized rollNo -> boolean)
@@ -187,12 +188,23 @@ export function getAppSettings(): AppSettings {
     enableFuzzyNameMatching: true,
     enableParentFolderInheritance: true,
     enableSheetLinkMatching: true,
+    theme: 'dark',
   };
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    if (!raw) return defaults;
+    const themeRaw = localStorage.getItem(STORAGE_KEYS.THEME) as 'dark' | 'light' | null;
+    if (!raw) {
+      if (themeRaw === 'light' || themeRaw === 'dark') {
+        defaults.theme = themeRaw;
+      }
+      return defaults;
+    }
     const parsed = JSON.parse(raw);
-    return { ...defaults, ...parsed };
+    const result = { ...defaults, ...parsed };
+    if (themeRaw === 'light' || themeRaw === 'dark') {
+      result.theme = themeRaw;
+    }
+    return result;
   } catch {
     return defaults;
   }
@@ -203,10 +215,35 @@ export function saveAppSettings(settings: Partial<AppSettings>): AppSettings {
   const updated = { ...current, ...settings };
   try {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+    if (settings.theme) {
+      localStorage.setItem(STORAGE_KEYS.THEME, settings.theme);
+    }
   } catch (e) {
     console.error('Failed to save settings:', e);
   }
   return updated;
+}
+
+export function getThemePreference(): 'dark' | 'light' {
+  try {
+    const direct = localStorage.getItem(STORAGE_KEYS.THEME);
+    if (direct === 'light' || direct === 'dark') return direct;
+    const settings = getAppSettings();
+    return settings.theme || 'dark';
+  } catch {
+    return 'dark';
+  }
+}
+
+export function saveThemePreference(theme: 'dark' | 'light'): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.THEME, theme);
+    const current = getAppSettings();
+    current.theme = theme;
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(current));
+  } catch (e) {
+    console.error('Failed to save theme preference:', e);
+  }
 }
 
 // 5. Sync Reports & History

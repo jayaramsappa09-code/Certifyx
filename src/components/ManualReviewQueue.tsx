@@ -30,6 +30,7 @@ import {
   saveDuplicateResolution,
   getDuplicateResolutions,
   addAuditLog,
+  getDynamicRoster,
 } from '../services/storageService';
 
 interface ManualReviewQueueProps {
@@ -152,6 +153,7 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
   const [previewIndex, setPreviewIndex] = useState<number>(0);
 
   const duplicateResolutions = getDuplicateResolutions();
+  const rosterStudents = getDynamicRoster();
 
   const showToast = (msg: string) => {
     setSuccessToast(msg);
@@ -550,7 +552,7 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                         className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                       >
                         <option value="">Assign to Student...</option>
-                        {FIXED_CLASS_ROSTER.map((s) => (
+                        {rosterStudents.map((s) => (
                           <option key={s.rollNo} value={s.rollNo}>
                             {s.rollNo} - {s.name}
                           </option>
@@ -739,7 +741,7 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                         className="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500 max-w-xs"
                       >
                         <option value="">Select Student from 67 Roster...</option>
-                        {FIXED_CLASS_ROSTER.map((s) => (
+                        {rosterStudents.map((s) => (
                           <option key={s.rollNo} value={s.rollNo}>
                             {s.rollNo} - {s.name}
                           </option>
@@ -940,7 +942,7 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                     className="flex-1 sm:flex-none px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200"
                   >
                     <option value="">Select Student from 67 Roster...</option>
-                    {FIXED_CLASS_ROSTER.map((s) => (
+                    {rosterStudents.map((s) => (
                       <option key={s.rollNo} value={s.rollNo}>
                         {s.rollNo} - {s.name}
                       </option>

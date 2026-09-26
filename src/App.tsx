@@ -36,6 +36,8 @@ import {
   addBatchPendingUpdates,
   removePendingUpdate,
   clearPendingUpdates,
+  getThemePreference,
+  saveThemePreference,
 } from './services/storageService';
 import {
   exportClassSummaryCsv,
@@ -49,6 +51,9 @@ import { readSpreadsheetValues } from './services/googleSheetsService';
 import {
   subscribeToStudentStatusesRealtime,
   broadcastStudentStatusUpdate,
+  fetchStudentStatusesFromSupabase,
+  saveStudentStatusesToSupabase,
+  flushPendingStudentStatusBroadcasts,
 } from './services/supabaseClient';
 import { runSyncEngine, SyncEngineResult } from './services/syncEngine';
 import {
@@ -92,6 +97,7 @@ import { GlobalSyncProgressBar, SyncProgressState } from './components/GlobalSyn
 import { OfflinePendingUpdatesModal } from './components/OfflinePendingUpdatesModal';
 import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
+import { EmailReminderModal } from './components/EmailReminderModal';
 import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-react';
 
 export default function App() {
@@ -108,6 +114,38 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(getAppSettings());
   const [driveConfig, setDriveConfig] = useState<GoogleDriveFolderConfig | null>(getSavedDriveConfig());
   const [sheetConfig, setSheetConfig] = useState<GoogleSheetConfig | null>(getSavedSheetConfig());
+
+  // Theme State ('dark' | 'light')
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return getThemePreference();
+  });
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('theme-light');
+      document.documentElement.classList.remove('theme-dark');
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.classList.add('theme-dark');
+      document.documentElement.classList.remove('theme-light');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  }, [theme]);
+
+  const handleToggleTheme = () => {
+    const nextTheme: 'dark' | 'light' = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    saveThemePreference(nextTheme);
+    saveAppSettings({ theme: nextTheme });
+    setSettings((prev) => ({ ...prev, theme: nextTheme }));
+    addAuditLog(
+      'Theme changed',
+      currentUser?.email || 'admin',
+      `Switched application theme to ${nextTheme === 'light' ? 'High-Contrast Light' : 'Dark'} mode`,
+      'SETTINGS'
+    );
+    showToast(`Switched to ${nextTheme === 'light' ? 'High-Contrast Light' : 'Dark'} Theme`, 'info');
+  };
 
   useEffect(() => {
     if (!supabase) return;
@@ -146,6 +184,8 @@ export default function App() {
   const [showSyncReportModal, setShowSyncReportModal] = useState(false);
   const [showAdvancedExportModal, setShowAdvancedExportModal] = useState(false);
   const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
+  const [showEmailReminderModal, setShowEmailReminderModal] = useState(false);
+  const [targetStudentForReminder, setTargetStudentForReminder] = useState<StudentStatusRecord | null>(null);
   const [showFirstSyncPreviewModal, setShowFirstSyncPreviewModal] = useState(false);
   const [pendingFirstSyncResult, setPendingFirstSyncResult] = useState<SyncEngineResult | null>(null);
   const [showSetupWizardModal, setShowSetupWizardModal] = useState(false);
@@ -230,6 +270,37 @@ export default function App() {
       setAmbiguousCertFiles(initialRun.ambiguousCertFiles);
     }
   }, []);
+
+  // Fetch from Supabase on start to overwrite or update local state
+  useEffect(() => {
+    async function loadFromSupabase() {
+      try {
+        const supaStatuses = await fetchStudentStatusesFromSupabase();
+        if (supaStatuses && supaStatuses.length > 0) {
+          setStudentStatuses((prev) =>
+            prev.map((s) => {
+              const matched = supaStatuses.find((ss) => ss.rollNo === s.rollNo);
+              if (matched) {
+                return {
+                  ...s,
+                  driveUploaded: typeof matched.driveUploaded !== 'undefined' ? matched.driveUploaded : s.driveUploaded,
+                  sheetUpdated: typeof matched.sheetUpdated !== 'undefined' ? matched.sheetUpdated : s.sheetUpdated,
+                  submitted: typeof matched.submitted !== 'undefined' ? matched.submitted : s.submitted,
+                  overallStatus: matched.overallStatus || s.overallStatus,
+                  lastUpdated: matched.updatedAt || s.lastUpdated,
+                };
+              }
+              return s;
+            })
+          );
+          showToast('🔋 Restored student status data from Supabase DB.', 'success');
+        }
+      } catch (err) {
+        console.warn('Failed to load initial data from Supabase:', err);
+      }
+    }
+    loadFromSupabase();
+  }, [currentUser]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setGlobalBanner({ message, type });
@@ -477,6 +548,7 @@ export default function App() {
         progressPercent: 15,
       });
       addAuditLog('Sync started', currentUser?.email || 'admin', 'Triggered synchronization engine', 'SYNC');
+      await flushPendingStudentStatusBroadcasts();
 
       let fetchedDriveFiles: DriveCertificateFile[] = [];
       let fetchedSheetRows: SheetRowRecord[] = [];
@@ -794,6 +866,20 @@ export default function App() {
     setLastSyncReport(result.report);
     setSyncHistory(getSyncHistory());
     setAuditLogs(getAuditLogs());
+
+    // Batch upsert synchronized results to Supabase for real-time sharing
+    saveStudentStatusesToSupabase(
+      result.studentStatuses.map((s) => ({
+        rollNo: s.rollNo,
+        name: s.name,
+        driveUploaded: s.driveUploaded,
+        sheetUpdated: s.sheetUpdated,
+        submitted: s.submitted,
+        overallStatus: s.overallStatus,
+        updatedBy: currentUser?.email || 'admin',
+        updatedAt: new Date().toISOString(),
+      }))
+    );
   };
 
   const handleConfirmFirstSync = () => {
@@ -1337,7 +1423,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
   const totalReviewItems = unidentifiedFiles.length + outsideClassFiles.length + ambiguousCertFiles.length + duplicateFiles.length;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
+    <div className={`min-h-screen ${theme === 'light' ? 'theme-light bg-slate-50 text-slate-900' : 'theme-dark bg-slate-950 text-slate-100'} flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-150`}>
       {/* Global Sync Loading Progress Bar & Capsule */}
       <GlobalSyncProgressBar isSyncing={isSyncing} syncProgress={syncProgress} />
 
@@ -1375,6 +1461,13 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         onLogin={handleGoogleLogin}
         onLogout={handleGoogleLogout}
         isGoogleConnected={Boolean(accessToken)}
+        isOnline={isOnline}
+        pendingUpdatesCount={pendingUpdates.length}
+        isSyncingPending={isSyncingPending}
+        onOpenPendingModal={() => setShowPendingUpdatesModal(true)}
+        onQuickSyncPending={handleSyncPendingUpdates}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
 
       {/* Main Content Area */}
@@ -1488,7 +1581,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
 
             {/* Top Metric Cards */}
             <DashboardStats
-              totalStudents={67}
+              totalStudents={studentStatuses.length || 67}
               certificatesFound={totalCertsFound}
               driveUploadedCount={driveUploadedCount}
               sheetUpdatedCount={sheetUpdatedCount}
@@ -1498,12 +1591,18 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               unidentifiedCount={unidentifiedFiles.length}
               outsideClassCount={outsideClassFiles.length}
               activeFilter={activeFilter}
-              onSelectFilter={setActiveFilter}
+              onSelectFilter={(f) => {
+                if (f === 'UNIDENTIFIED' || f === 'OUTSIDE_CLASS') {
+                  setActiveTab('review');
+                } else {
+                  setActiveFilter(f);
+                }
+              }}
             />
 
             {/* Status Distribution Recharts Bar Chart */}
             <StatusDistributionChart
-              totalStudents={67}
+              totalStudents={studentStatuses.length || 67}
               completedCount={completedCount}
               pendingCount={pendingCount}
               notStartedCount={notStartedCount}
@@ -1539,6 +1638,10 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               onExportSummaryReport={handleExportSummaryReport}
               onOpenAdvancedExport={() => setShowAdvancedExportModal(true)}
               onOpenBulkMapping={() => setShowBulkMappingModal(true)}
+              onOpenEmailReminder={(targetStudent) => {
+                setTargetStudentForReminder(targetStudent || null);
+                setShowEmailReminderModal(true);
+              }}
               onAddRosterStudent={handleAddRosterStudent}
               onEditRosterStudent={handleEditRosterStudent}
               onDeleteRosterStudent={handleDeleteRosterStudent}
@@ -1617,6 +1720,11 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
           onToggleSubmitted={handleToggleSubmitted}
           onToggleDriveUploaded={handleToggleDriveUploaded}
           onToggleSheetUpdated={handleToggleSheetUpdated}
+          onOpenEmailReminder={(student) => {
+            setSelectedStudentForDetail(null);
+            setTargetStudentForReminder(student);
+            setShowEmailReminderModal(true);
+          }}
         />
       )}
 
@@ -1698,6 +1806,26 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
           unidentifiedFiles={unidentifiedFiles}
           onRefreshAfterResolution={handleRefreshAfterResolution}
           userEmail={currentUser?.email || 'admin'}
+        />
+      )}
+
+      {/* Email Reminder Dispatcher Modal */}
+      {showEmailReminderModal && (
+        <EmailReminderModal
+          isOpen={showEmailReminderModal}
+          onClose={() => {
+            setShowEmailReminderModal(false);
+            setTargetStudentForReminder(null);
+          }}
+          students={studentStatuses}
+          initialTargetRollNo={targetStudentForReminder?.rollNo}
+          driveConfig={driveConfig}
+          sheetConfig={sheetConfig}
+          onRecordAuditLog={(action, details) => {
+            addAuditLog(action, currentUser?.email || 'admin', details, 'STATUS');
+            setAuditLogs(getAuditLogs());
+          }}
+          onToast={showToast}
         />
       )}
 

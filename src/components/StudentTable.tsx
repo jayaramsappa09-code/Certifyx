@@ -31,6 +31,7 @@ import {
   ArrowDown,
   Plus,
   Trash2,
+  Mail,
 } from 'lucide-react';
 import { StudentStatusRecord } from '../types';
 
@@ -55,6 +56,7 @@ interface StudentTableProps {
   onExportSummaryReport: () => void;
   onOpenAdvancedExport?: () => void;
   onOpenBulkMapping?: () => void;
+  onOpenEmailReminder?: (targetStudent?: StudentStatusRecord) => void;
   onAddRosterStudent?: (rollNo: string, name: string) => void;
   onEditRosterStudent?: (rollNo: string, newName: string) => void;
   onDeleteRosterStudent?: (rollNo: string) => void;
@@ -142,6 +144,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onExportSummaryReport,
   onOpenAdvancedExport,
   onOpenBulkMapping,
+  onOpenEmailReminder,
   onAddRosterStudent,
   onEditRosterStudent,
   onDeleteRosterStudent,
@@ -156,6 +159,11 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   >('rollNo');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  const incompleteCount = useMemo(
+    () => students.filter((s) => s.overallStatus === 'NOT STARTED' || s.overallStatus === 'PENDING').length,
+    [students]
+  );
 
   // Student roster mutation state
   const [showRosterModal, setShowRosterModal] = useState(false);
@@ -298,10 +306,10 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter((s) => {
-        const matchRoll = s.rollNo.toLowerCase().includes(q);
-        const matchName = s.name.toLowerCase().includes(q);
-        const matchCerts = s.certificates.some((c) => c.toLowerCase().includes(q));
-        const matchDriveFiles = s.driveFiles.some((f) => f.name.toLowerCase().includes(q));
+        const matchRoll = (s.rollNo || '').toLowerCase().includes(q);
+        const matchName = (s.name || '').toLowerCase().includes(q);
+        const matchCerts = (s.certificates || []).some((c) => (c || '').toLowerCase().includes(q));
+        const matchDriveFiles = (s.driveFiles || []).some((f) => (f.name || '').toLowerCase().includes(q));
         return matchRoll || matchName || matchCerts || matchDriveFiles;
       });
     }
@@ -363,9 +371,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     result.sort((a, b) => {
       let cmp = 0;
       if (sortField === 'rollNo') {
-        cmp = a.rollNo.localeCompare(b.rollNo, undefined, { numeric: true, sensitivity: 'base' });
+        cmp = (a.rollNo || '').localeCompare(b.rollNo || '', undefined, { numeric: true, sensitivity: 'base' });
       } else if (sortField === 'name') {
-        cmp = a.name.localeCompare(b.name);
+        cmp = (a.name || '').localeCompare(b.name || '');
       } else if (sortField === 'overallStatus') {
         const statusOrder: Record<string, number> = {
           COMPLETED: 3,
@@ -749,6 +757,24 @@ export const StudentTable: React.FC<StudentTableProps> = ({
               >
                 <Sparkles className="w-4 h-4 text-purple-300" />
                 <span>Advanced Export</span>
+              </button>
+            )}
+
+            {/* Email Reminders Button */}
+            {onOpenEmailReminder && (
+              <button
+                type="button"
+                onClick={() => onOpenEmailReminder()}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer shadow-md shadow-amber-600/20"
+                title="Send personalized email reminders to students with NOT STARTED or PENDING status"
+              >
+                <Mail className="w-4 h-4" />
+                <span>Email Reminders</span>
+                {incompleteCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-mono font-bold">
+                    {incompleteCount}
+                  </span>
+                )}
               </button>
             )}
 
@@ -1449,6 +1475,16 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+                          {onOpenEmailReminder && (student.overallStatus === 'NOT STARTED' || student.overallStatus === 'PENDING') && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenEmailReminder(student)}
+                              className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-950/80 rounded-lg transition cursor-pointer touch-manipulation"
+                              title={`Send email reminder to ${student.name} (${student.overallStatus})`}
+                            >
+                              <Mail className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
 
                         {/* Popover Hover Quick Actions Toolbar */}
@@ -1461,6 +1497,17 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                           >
                             View
                           </button>
+                          {onOpenEmailReminder && (student.overallStatus === 'NOT STARTED' || student.overallStatus === 'PENDING') && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenEmailReminder(student)}
+                              className="px-2.5 py-1 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                              title="Send email reminder to this student"
+                            >
+                              <Mail className="w-3 h-3" />
+                              <span>Remind</span>
+                            </button>
+                          )}
                           {onEditRosterStudent && (
                             <button
                               type="button"
@@ -1801,6 +1848,17 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                         title="Delete student from roster"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {onOpenEmailReminder && (student.overallStatus === 'NOT STARTED' || student.overallStatus === 'PENDING') && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenEmailReminder(student)}
+                        className="px-2.5 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer touch-manipulation flex items-center gap-1 shadow-sm"
+                        title="Send email reminder to this student"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>Remind</span>
                       </button>
                     )}
                     <button

@@ -206,6 +206,9 @@ export async function readSpreadsheetValues(
   const certColIdx = mapping.certTypeCol
     ? headerRow.findIndex((h) => h.toLowerCase() === mapping.certTypeCol.toLowerCase())
     : -1;
+  const emailColIdx = mapping.emailCol
+    ? headerRow.findIndex((h) => h.toLowerCase() === mapping.emailCol?.toLowerCase())
+    : -1;
   const yearColIdx = mapping.yearCol
     ? headerRow.findIndex((h) => h.toLowerCase() === mapping.yearCol?.toLowerCase())
     : -1;
@@ -236,11 +239,23 @@ export async function readSpreadsheetValues(
 
     let rawRoll = rollColIdx >= 0 ? (row[rollColIdx] || '').toString().trim() : '';
     let name = nameColIdx >= 0 ? (row[nameColIdx] || '').toString().trim() : undefined;
+    let email = emailColIdx >= 0 ? (row[emailColIdx] || '').toString().trim() : undefined;
     let certType = certColIdx >= 0 ? (row[certColIdx] || '').toString().trim() : undefined;
     let year = yearColIdx >= 0 ? (row[yearColIdx] || '').toString().trim() : undefined;
     let section = secColIdx >= 0 ? (row[secColIdx] || '').toString().trim() : undefined;
     let certUrl = certUrlColIdx >= 0 ? (row[certUrlColIdx] || '').toString().trim() : undefined;
     let submissionTimestamp = timestampColIdx >= 0 ? (row[timestampColIdx] || '').toString().trim() : undefined;
+
+    // Fallback: If email not in specified column, look for email in any cell
+    if (!email) {
+      for (const cell of row) {
+        const str = (cell || '').toString().trim();
+        if (str.includes('@') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str)) {
+          email = str;
+          break;
+        }
+      }
+    }
 
     // Fallback: If certUrl not in specified column, look for URL in any cell
     if (!certUrl) {
@@ -317,6 +332,7 @@ export async function readSpreadsheetValues(
       rowIndex: i + 1, // 1-indexed for spreadsheet display
       rollNo: rawRoll || (matchedStudent ? matchedStudent.rollNo : detectedRoll || ''),
       name: name || (matchedStudent ? matchedStudent.name : undefined),
+      email,
       certificateType: certType,
       year,
       section,
@@ -347,6 +363,7 @@ export function autoDetectColumns(headers: string[]): ColumnMapping {
   let rollNoCol = '';
   let nameCol = '';
   let certTypeCol = '';
+  let emailCol = '';
   let yearCol = '';
   let sectionCol = '';
   let certUrlCol = '';
@@ -358,6 +375,11 @@ export function autoDetectColumns(headers: string[]): ColumnMapping {
     // Timestamp patterns
     if (!timestampCol && (n.includes('time') || n.includes('date') || n.includes('submitted'))) {
       timestampCol = h;
+    }
+
+    // Email patterns
+    if (!emailCol && (n.includes('email') || n.includes('mail') || n.includes('gmail'))) {
+      emailCol = h;
     }
 
     // Roll number patterns: 'rollno', 'rollnumber', 'studentid', 'htno', 'hallticket', 'regno', 'id', 'pin', 'reg'
@@ -429,6 +451,7 @@ export function autoDetectColumns(headers: string[]): ColumnMapping {
     rollNoCol,
     nameCol,
     certTypeCol,
+    emailCol,
     yearCol,
     sectionCol,
     certUrlCol,

@@ -103,7 +103,10 @@ export const ROSTER_MAP = new Map<string, Student>();
 export function updateRosterMap() {
   ROSTER_MAP.clear();
   FIXED_CLASS_ROSTER.forEach((student) => {
-    ROSTER_MAP.set(student.rollNo.toUpperCase().trim(), student);
+    const trimmed = student.rollNo.toUpperCase().trim();
+    const normalized = normalizeRollNumber(student.rollNo);
+    if (trimmed) ROSTER_MAP.set(trimmed, student);
+    if (normalized) ROSTER_MAP.set(normalized, student);
   });
 }
 

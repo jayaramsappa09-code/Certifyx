@@ -91,7 +91,7 @@ export const StatusDistributionChart: React.FC<StatusDistributionChartProps> = (
       fill: '#64748b', // slate-500
       gradientFrom: '#64748b',
       gradientTo: '#475569',
-      filterKey: 'ALL',
+      filterKey: 'NOT_STARTED',
       icon: CircleDashed,
       description: 'No Google Drive file uploaded or Google Sheet entry found for student roll number',
     },

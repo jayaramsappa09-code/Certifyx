@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   Link,
   Check,
+  Mail,
 } from 'lucide-react';
 import { StudentStatusRecord, DriveCertificateFile } from '../types';
 import { CertificateThumbnail } from './ManualReviewQueue';
@@ -27,6 +28,7 @@ interface StudentDetailModalProps {
   onToggleSubmitted: (rollNo: string, current: boolean) => void;
   onToggleDriveUploaded?: (rollNo: string, current: boolean) => void;
   onToggleSheetUpdated?: (rollNo: string, current: boolean) => void;
+  onOpenEmailReminder?: (student: StudentStatusRecord) => void;
 }
 
 export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
@@ -35,6 +37,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   onToggleSubmitted,
   onToggleDriveUploaded,
   onToggleSheetUpdated,
+  onOpenEmailReminder,
 }) => {
   const [copiedFileId, setCopiedFileId] = useState<string | null>(null);
 
@@ -119,12 +122,29 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             </h2>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenEmailReminder && (student.overallStatus === 'NOT STARTED' || student.overallStatus === 'PENDING') && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenEmailReminder(student);
+                }}
+                className="px-3 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-amber-600/20 transition cursor-pointer"
+                title="Send personalized email reminder to this student"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>Send Reminder</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6 flex-1">

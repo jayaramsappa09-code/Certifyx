@@ -51,6 +51,7 @@ export interface SheetRowRecord {
   rowIndex: number;
   rollNo: string;
   name?: string;
+  email?: string;
   certificateType?: string;
   year?: string;
   section?: string;
@@ -67,6 +68,7 @@ export interface ColumnMapping {
   rollNoCol: string;
   nameCol: string;
   certTypeCol: string;
+  emailCol?: string;
   yearCol?: string;
   sectionCol?: string;
   certUrlCol?: string;
@@ -91,6 +93,8 @@ export interface SheetSyncProof {
 export interface StudentStatusRecord {
   rollNo: string;
   name: string;
+  email?: string;
+  lastReminded?: string;
   certificates: string[];
   driveUploaded: boolean;
   sheetUpdated: boolean;
@@ -151,6 +155,7 @@ export interface AppSettings {
   enableFuzzyNameMatching?: boolean;
   enableParentFolderInheritance?: boolean;
   enableSheetLinkMatching?: boolean;
+  theme?: 'dark' | 'light';
 }
 
 export type ToggleFieldType = 'submitted' | 'driveUploaded' | 'sheetUpdated';

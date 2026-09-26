@@ -495,28 +495,29 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     studentSheetRecordsMap.set(normRoll, currentList);
   }
 
-  // 3. Build Student Status Records for all 67 students strictly
+  // 3. Build Student Status Records for all roster students strictly
   const studentStatuses: StudentStatusRecord[] = FIXED_CLASS_ROSTER.map((student) => {
-    const normRoll = student.rollNo;
-    const matchedDriveFiles = studentDriveFilesMap.get(normRoll) || [];
-    const matchedSheetRows = studentSheetRecordsMap.get(normRoll) || [];
+    const rawRoll = student.rollNo;
+    const normRoll = normalizeRollNumber(rawRoll);
+    const matchedDriveFiles = studentDriveFilesMap.get(normRoll) || (rawRoll !== normRoll ? studentDriveFilesMap.get(rawRoll) : undefined) || [];
+    const matchedSheetRows = studentSheetRecordsMap.get(normRoll) || (rawRoll !== normRoll ? studentSheetRecordsMap.get(rawRoll) : undefined) || [];
 
     // Drive status: true if Drive has matching files OR manual admin override is set to true
-    const driveOverrideVal = driveOverrides[normRoll];
+    const driveOverrideVal = driveOverrides[normRoll] ?? driveOverrides[rawRoll];
     const driveUploaded =
       typeof driveOverrideVal === 'boolean'
         ? driveOverrideVal
         : matchedDriveFiles.length > 0;
 
     // Sheet status: true if Sheet has matching rows OR manual admin override is set to true
-    const sheetOverrideVal = sheetOverrides[normRoll];
+    const sheetOverrideVal = sheetOverrides[normRoll] ?? sheetOverrides[rawRoll];
     const sheetUpdated =
       typeof sheetOverrideVal === 'boolean'
         ? sheetOverrideVal
         : matchedSheetRows.length > 0;
 
     // Submitted status: admin tick, defaults to false
-    const submitted = submittedMap[normRoll] ?? false;
+    const submitted = submittedMap[normRoll] ?? submittedMap[rawRoll] ?? false;
 
     // Aggregate unique certificate names/types
     const certNamesSet = new Set<string>();
@@ -527,6 +528,28 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     matchedSheetRows.forEach((r) => {
       if (r.certificateType) certNamesSet.add(r.certificateType);
     });
+
+    // Extract student email from sheet records if available
+    let studentEmail: string | undefined = undefined;
+    for (const r of matchedSheetRows) {
+      if (r.email && r.email.includes('@')) {
+        studentEmail = r.email.trim();
+        break;
+      }
+      if (r.rawValues) {
+        for (const [key, val] of Object.entries(r.rawValues)) {
+          if (
+            (key.toLowerCase().includes('email') || key.toLowerCase().includes('mail')) &&
+            val &&
+            val.includes('@')
+          ) {
+            studentEmail = val.trim();
+            break;
+          }
+        }
+      }
+      if (studentEmail) break;
+    }
 
     // Overall 3-way status: Completed (all 3 true), Not Started (all 3 false), Pending (otherwise)
     let overallStatus: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
@@ -541,6 +564,7 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     return {
       rollNo: student.rollNo,
       name: student.name,
+      email: studentEmail,
       certificates: Array.from(certNamesSet),
       driveUploaded,
       sheetUpdated,

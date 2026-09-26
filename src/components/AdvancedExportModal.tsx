@@ -79,29 +79,33 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
   const handleApplyPreset = (type: 'yesno' | 'descriptive' | 'passfail' | 'boolean') => {
     setPreset(type);
     if (type === 'yesno') {
-      setOptions({
+      setOptions((prev) => ({
+        ...prev,
         driveUploadedLabels: { trueLabel: 'Yes', falseLabel: 'No' },
         sheetUpdatedLabels: { trueLabel: 'Yes', falseLabel: 'No' },
         submittedLabels: { trueLabel: 'Yes', falseLabel: 'No' },
-      });
+      }));
     } else if (type === 'descriptive') {
-      setOptions({
+      setOptions((prev) => ({
+        ...prev,
         driveUploadedLabels: { trueLabel: 'Uploaded to Drive', falseLabel: 'Missing Drive File' },
         sheetUpdatedLabels: { trueLabel: 'Recorded in Sheet', falseLabel: 'Missing Sheet Entry' },
         submittedLabels: { trueLabel: 'Confirmed by Admin', falseLabel: 'Unconfirmed' },
-      });
+      }));
     } else if (type === 'passfail') {
-      setOptions({
+      setOptions((prev) => ({
+        ...prev,
         driveUploadedLabels: { trueLabel: 'PASS', falseLabel: 'FAIL' },
         sheetUpdatedLabels: { trueLabel: 'PASS', falseLabel: 'FAIL' },
         submittedLabels: { trueLabel: 'PASS', falseLabel: 'FAIL' },
-      });
+      }));
     } else if (type === 'boolean') {
-      setOptions({
+      setOptions((prev) => ({
+        ...prev,
         driveUploadedLabels: { trueLabel: 'TRUE', falseLabel: 'FALSE' },
         sheetUpdatedLabels: { trueLabel: 'TRUE', falseLabel: 'FALSE' },
         submittedLabels: { trueLabel: 'TRUE', falseLabel: 'FALSE' },
-      });
+      }));
     }
   };
 
