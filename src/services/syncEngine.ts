@@ -469,15 +469,35 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
         targetRoll = extracted;
       } else if (isValidClassRollNumber(normalized)) {
         targetRoll = normalized;
-      } else if (row.name && allowFuzzyNames) {
-        // Match by student name
-        const normName = row.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (normName.length >= 4) {
-          const match = FIXED_CLASS_ROSTER.find(
-            (s) => s.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normName
-          );
-          if (match) targetRoll = match.rollNo;
-        }
+      }
+    }
+
+    // Try multi-identifier fallback 1: Extract from Email Address
+    if (!targetRoll && row.email) {
+      const extractedFromEmail = extractRollNumberFromText(row.email);
+      if (extractedFromEmail && isValidClassRollNumber(extractedFromEmail)) {
+        targetRoll = extractedFromEmail;
+      }
+    }
+
+    // Try multi-identifier fallback 2: Extract from Raw Values (Form response fields)
+    if (!targetRoll && row.rawValues) {
+      const joinedRaw = Object.values(row.rawValues).join(' ');
+      const extractedFromRaw = extractRollNumberFromText(joinedRaw);
+      if (extractedFromRaw && isValidClassRollNumber(extractedFromRaw)) {
+        targetRoll = extractedFromRaw;
+      }
+    }
+
+    // Try multi-identifier fallback 3: Name / Fuzzy Roster Match
+    if (!targetRoll && (row.name || row.rawValues) && allowFuzzyNames) {
+      const targetName = row.name || Object.values(row.rawValues || {}).join(' ');
+      const normName = targetName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (normName.length >= 4) {
+        const match = FIXED_CLASS_ROSTER.find(
+          (s) => s.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normName
+        );
+        if (match) targetRoll = match.rollNo;
       }
     }
 
@@ -614,25 +634,30 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     let mismatchType: 'MORE_IN_SHEET' | 'MORE_IN_DRIVE' | 'EQUAL' = 'EQUAL';
     let mismatchDesc = '';
 
-    if (driveCount > 0 && sheetCount > 0 && driveCount !== sheetCount) {
+    if (driveCount !== sheetCount) {
       hasMismatch = true;
       if (driveCount > sheetCount) {
         mismatchType = 'MORE_IN_DRIVE';
         const diff = driveCount - sheetCount;
-        mismatchDesc = `${driveCount} Drive file${driveCount > 1 ? 's' : ''} uploaded vs ${sheetCount} Sheet response${sheetCount !== 1 ? 's' : ''} (${diff} missing in Google Sheet)`;
+        mismatchDesc = sheetCount === 0
+          ? `${driveCount} Drive file${driveCount > 1 ? 's' : ''} uploaded, but 0 Google Sheet form responses recorded.`
+          : `${driveCount} Drive file${driveCount > 1 ? 's' : ''} vs ${sheetCount} Sheet response${sheetCount !== 1 ? 's' : ''} (${diff} missing in Google Sheet)`;
       } else {
         mismatchType = 'MORE_IN_SHEET';
         const diff = sheetCount - driveCount;
-        mismatchDesc = `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} logged vs ${driveCount} Drive file${driveCount !== 1 ? 's' : ''} (${diff} missing in Google Drive)`;
+        mismatchDesc = driveCount === 0
+          ? `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} logged, but 0 Google Drive PDF files uploaded.`
+          : `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} vs ${driveCount} Drive file${driveCount !== 1 ? 's' : ''} (${diff} missing in Google Drive)`;
       }
-    } else if (driveCount > 0 && sheetCount === 0 && !sheetUpdated) {
+    } else if (driveUploaded !== sheetUpdated) {
       hasMismatch = true;
-      mismatchType = 'MORE_IN_DRIVE';
-      mismatchDesc = `${driveCount} Drive file${driveCount > 1 ? 's' : ''} uploaded, but 0 Google Sheet form responses recorded.`;
-    } else if (sheetCount > 0 && driveCount === 0 && !driveUploaded) {
-      hasMismatch = true;
-      mismatchType = 'MORE_IN_SHEET';
-      mismatchDesc = `${sheetCount} Sheet response${sheetCount > 1 ? 's' : ''} recorded, but 0 Google Drive PDF files uploaded.`;
+      if (driveUploaded) {
+        mismatchType = 'MORE_IN_DRIVE';
+        mismatchDesc = 'Drive upload verified, but Google Sheet response is missing.';
+      } else {
+        mismatchType = 'MORE_IN_SHEET';
+        mismatchDesc = 'Google Sheet response recorded, but Drive certificate file is missing.';
+      }
     }
 
     const countMismatch = {

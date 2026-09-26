@@ -341,7 +341,11 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         const driveText = s.driveUploaded ? 'drive uploaded drive_uploaded' : 'missing drive drive_missing';
         const sheetText = s.sheetUpdated ? 'sheet updated sheet_updated' : 'missing sheet sheet_missing';
         const subText = s.submitted ? 'submitted confirmed' : 'unsubmitted pending_submission';
-        const mismatchText = s.countMismatch?.hasMismatch ? 'mismatch count_mismatch discrepancy' : '';
+        const hasAnyMismatch =
+          (s.countMismatch && s.countMismatch.hasMismatch) ||
+          s.driveUploaded !== s.sheetUpdated ||
+          ((s.driveFiles?.length || 0) !== (s.sheetRecords?.length || 0));
+        const mismatchText = hasAnyMismatch ? 'mismatch count_mismatch discrepancy gap' : '';
 
         const fullStudentSearchText = `${roll} ${name} ${status} ${certs} ${driveNames} ${phone} ${email} ${driveText} ${sheetText} ${subText} ${mismatchText}`;
 
@@ -399,7 +403,13 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         result = result.filter((s) => s.certificates.length === 0 && !s.driveUploaded);
         break;
       case 'COUNT_MISMATCH':
-        result = result.filter((s) => s.countMismatch && s.countMismatch.hasMismatch);
+      case 'MISMATCH':
+        result = result.filter(
+          (s) =>
+            (s.countMismatch && s.countMismatch.hasMismatch) ||
+            s.driveUploaded !== s.sheetUpdated ||
+            ((s.driveFiles?.length || 0) !== (s.sheetRecords?.length || 0))
+        );
         break;
       case 'ALL':
       default:
@@ -531,7 +541,12 @@ export const StudentTable: React.FC<StudentTableProps> = ({
       all: students.length || 67,
       missingDrive: students.filter((s) => !s.driveUploaded).length,
       missingSheet: students.filter((s) => !s.sheetUpdated).length,
-      countMismatch: students.filter((s) => s.countMismatch && s.countMismatch.hasMismatch).length,
+      countMismatch: students.filter(
+        (s) =>
+          (s.countMismatch && s.countMismatch.hasMismatch) ||
+          s.driveUploaded !== s.sheetUpdated ||
+          ((s.driveFiles?.length || 0) !== (s.sheetRecords?.length || 0))
+      ).length,
       incomplete: students.filter((s) => s.overallStatus !== 'COMPLETED').length,
       dualMissing: students.filter((s) => !s.driveUploaded && !s.sheetUpdated).length,
       unconfirmed: students.filter((s) => !s.submitted).length,

@@ -1952,12 +1952,18 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         <DataHealthReportModal
           students={studentStatuses}
           sheetRows={sheetSyncProof?.rows || []}
-          driveFiles={[
-            ...studentStatuses.flatMap((s) => s.driveFiles || []),
-            ...unidentifiedFiles,
-            ...outsideClassFiles,
-            ...duplicateFiles,
-          ]}
+          driveFiles={Array.from(
+            new Map(
+              [
+                ...studentStatuses.flatMap((s) => s.driveFiles || []),
+                ...unidentifiedFiles,
+                ...outsideClassFiles,
+                ...duplicateFiles,
+              ]
+                .filter(Boolean)
+                .map((f) => [f.id || f.name, f])
+            ).values()
+          )}
           onClose={() => setShowDataHealthReportModal(false)}
           onToast={showToast}
         />

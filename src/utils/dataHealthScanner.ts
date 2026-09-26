@@ -233,18 +233,31 @@ export function runDataHealthScan(
     }
   });
 
-  // 2. Scan Google Drive Files
-  driveFiles.forEach((file) => {
-    const fname = file.name.trim();
+  // 2. Scan Google Drive Files (Deduplicated by File ID or Name)
+  const uniqueDriveFilesMap = new Map<string, DriveCertificateFile>();
+  for (const file of driveFiles) {
+    if (file && (file.id || file.name)) {
+      const key = file.id || file.name;
+      if (!uniqueDriveFilesMap.has(key)) {
+        uniqueDriveFilesMap.set(key, file);
+      }
+    }
+  }
+  const cleanDriveFiles = Array.from(uniqueDriveFilesMap.values());
+
+  cleanDriveFiles.forEach((file, fIdx) => {
+    const fname = (file.name || '').trim();
+    if (!fname) return;
+
     const existing = driveFileNameMap.get(fname) || [];
-    existing.push(file.id);
+    existing.push(file.id || `file_${fIdx}`);
     driveFileNameMap.set(fname, existing);
 
     // Check if filename has zero extension or bad file type
     const ext = fname.split('.').pop()?.toLowerCase();
     if (ext && !['pdf', 'png', 'jpg', 'jpeg', 'webp', 'docx'].includes(ext)) {
       issues.push({
-        id: `drive_bad_ext_${file.id}`,
+        id: `drive_bad_ext_${file.id || fIdx}_${fIdx}`,
         type: 'MISSING_REQUIRED_FIELD',
         severity: 'INFO',
         title: `Unusual File Format "${fname}"`,
@@ -259,10 +272,12 @@ export function runDataHealthScan(
   });
 
   // Flag Duplicate Drive Files
+  let dupFileIdx = 0;
   driveFileNameMap.forEach((ids, fileName) => {
     if (ids.length > 1) {
+      dupFileIdx++;
       issues.push({
-        id: `drive_dup_file_${fileName}`,
+        id: `drive_dup_file_${fileName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${dupFileIdx}`,
         type: 'DUPLICATE_DRIVE_FILE',
         severity: 'WARNING',
         title: `Duplicate File Name "${fileName}" in Google Drive`,

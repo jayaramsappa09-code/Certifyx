@@ -288,9 +288,9 @@ export const DataHealthReportModal: React.FC<DataHealthReportModalProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredIssues.map((issue) => (
+              {filteredIssues.map((issue, issueIdx) => (
                 <div
-                  key={issue.id}
+                  key={`${issue.id}_${issueIdx}`}
                   className={`p-4 bg-slate-950 border rounded-2xl transition space-y-2.5 ${
                     issue.severity === 'CRITICAL'
                       ? 'border-rose-900/60 hover:border-rose-700/80 bg-rose-950/10'
