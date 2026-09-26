@@ -72,6 +72,7 @@ interface StudentTableProps {
   onOpenAdvancedExport?: () => void;
   onOpenBulkMapping?: () => void;
   onOpenEmailReminder?: (targetStudent?: StudentStatusRecord) => void;
+  onOpenDataHealthReport?: () => void;
   onAddRosterStudent?: (rollNo: string, name: string) => void;
   onEditRosterStudent?: (rollNo: string, newName: string) => void;
   onDeleteRosterStudent?: (rollNo: string) => void;
@@ -165,6 +166,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onOpenAdvancedExport,
   onOpenBulkMapping,
   onOpenEmailReminder,
+  onOpenDataHealthReport,
   onAddRosterStudent,
   onEditRosterStudent,
   onDeleteRosterStudent,
@@ -323,15 +325,28 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   const filteredStudents = useMemo(() => {
     let result = [...students];
 
-    // 1. Text Search (Roll No, Name, or Certificate Type)
+    // 1. Multi-Token Intelligent Search (Roll No, Name, Certificates, Status, Email, Phone)
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
+      const tokens = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
       result = result.filter((s) => {
-        const matchRoll = (s.rollNo || '').toLowerCase().includes(q);
-        const matchName = (s.name || '').toLowerCase().includes(q);
-        const matchCerts = (s.certificates || []).some((c) => (c || '').toLowerCase().includes(q));
-        const matchDriveFiles = (s.driveFiles || []).some((f) => (f.name || '').toLowerCase().includes(q));
-        return matchRoll || matchName || matchCerts || matchDriveFiles;
+        // Construct a searchable string representation of the student
+        const roll = (s.rollNo || '').toLowerCase();
+        const name = (s.name || '').toLowerCase();
+        const status = (s.overallStatus || '').toLowerCase();
+        const certs = (s.certificates || []).map((c) => (c || '').toLowerCase()).join(' ');
+        const driveNames = (s.driveFiles || []).map((f) => (f.name || '').toLowerCase()).join(' ');
+        const phone = (s.phone || '').toLowerCase();
+        const email = (s.email || '').toLowerCase();
+
+        const driveText = s.driveUploaded ? 'drive uploaded drive_uploaded' : 'missing drive drive_missing';
+        const sheetText = s.sheetUpdated ? 'sheet updated sheet_updated' : 'missing sheet sheet_missing';
+        const subText = s.submitted ? 'submitted confirmed' : 'unsubmitted pending_submission';
+        const mismatchText = s.countMismatch?.hasMismatch ? 'mismatch count_mismatch discrepancy' : '';
+
+        const fullStudentSearchText = `${roll} ${name} ${status} ${certs} ${driveNames} ${phone} ${email} ${driveText} ${sheetText} ${subText} ${mismatchText}`;
+
+        // Every token in query must be present in the student's combined search text
+        return tokens.every((token) => fullStudentSearchText.includes(token));
       });
     }
 
@@ -565,6 +580,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         }}
         onOpenStudentDetails={onOpenDetails}
         onOpenEmailReminder={onOpenEmailReminder}
+        onOpenDataHealthReport={onOpenDataHealthReport}
         onToast={onToast}
       />
 
@@ -648,6 +664,25 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+
+          {/* Quick Search Tags */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] text-slate-400">
+            <span className="font-semibold text-slate-500 shrink-0">Quick Search:</span>
+            {['pending', 'mismatch', 'missing drive', 'missing sheet', 'submitted', 'nptel'].map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => setSearchQuery(tag)}
+                className={`px-2 py-0.5 rounded-lg border text-[10px] font-mono transition cursor-pointer shrink-0 ${
+                  searchQuery.toLowerCase() === tag
+                    ? 'bg-blue-600 text-white border-blue-500 font-bold'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
           </div>
 
           {/* Action Buttons: Separate CSV Exports Dropdown & Report */}

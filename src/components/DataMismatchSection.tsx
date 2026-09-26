@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Scale,
   FileText,
+  Activity,
 } from 'lucide-react';
 import {
   StudentStatusRecord,
@@ -39,6 +40,7 @@ interface DataMismatchSectionProps {
   onFilterTableByMismatch?: (filterId: string) => void;
   onOpenStudentDetails?: (student: StudentStatusRecord) => void;
   onOpenEmailReminder?: (student?: StudentStatusRecord) => void;
+  onOpenDataHealthReport?: () => void;
   onToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -50,6 +52,7 @@ export const DataMismatchSection: React.FC<DataMismatchSectionProps> = ({
   onFilterTableByMismatch,
   onOpenStudentDetails,
   onOpenEmailReminder,
+  onOpenDataHealthReport,
   onToast,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -184,6 +187,18 @@ export const DataMismatchSection: React.FC<DataMismatchSectionProps> = ({
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span>{strictRosterEnforced ? 'Strict Roster Filter: ON' : 'Strict Filter: OFF'}</span>
           </button>
+
+          {onOpenDataHealthReport && (
+            <button
+              type="button"
+              onClick={onOpenDataHealthReport}
+              className="px-3 py-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
+              title="Open automated Spreadsheet Data Health Audit Report"
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Data Health Report</span>
+            </button>
+          )}
 
           <button
             type="button"

@@ -99,6 +99,7 @@ import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
 import { EmailReminderModal } from './components/EmailReminderModal';
 import { AutoEmailSchedulerModal } from './components/AutoEmailSchedulerModal';
+import { DataHealthReportModal } from './components/DataHealthReportModal';
 import { DateRangeFilterBar } from './components/DateRangeFilterBar';
 import {
   DateRangeFilterConfig,
@@ -203,6 +204,7 @@ export default function App() {
   const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
   const [showEmailReminderModal, setShowEmailReminderModal] = useState(false);
   const [showAutoSchedulerModal, setShowAutoSchedulerModal] = useState(false);
+  const [showDataHealthReportModal, setShowDataHealthReportModal] = useState(false);
   const [targetStudentForReminder, setTargetStudentForReminder] = useState<StudentStatusRecord | null>(null);
   const [showFirstSyncPreviewModal, setShowFirstSyncPreviewModal] = useState(false);
   const [pendingFirstSyncResult, setPendingFirstSyncResult] = useState<SyncEngineResult | null>(null);
@@ -1528,6 +1530,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         setActiveTab={setActiveTab}
         onSyncNow={handleSyncNow}
         onOpenSheetProof={() => setShowSheetProofModal(true)}
+        onOpenDataHealthReport={() => setShowDataHealthReportModal(true)}
         isSyncing={isSyncing}
         lastSynced={lastSyncReport?.timestamp || null}
         reviewCount={totalReviewItems}
@@ -1731,6 +1734,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                 setTargetStudentForReminder(targetStudent || null);
                 setShowEmailReminderModal(true);
               }}
+              onOpenDataHealthReport={() => setShowDataHealthReportModal(true)}
               onAddRosterStudent={handleAddRosterStudent}
               onEditRosterStudent={handleEditRosterStudent}
               onDeleteRosterStudent={handleDeleteRosterStudent}
@@ -1939,6 +1943,22 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
             addAuditLog(action, currentUser?.email || 'admin', details, 'SETTINGS');
             setAuditLogs(getAuditLogs());
           }}
+          onToast={showToast}
+        />
+      )}
+
+      {/* Data Health Report Modal Overlay */}
+      {showDataHealthReportModal && (
+        <DataHealthReportModal
+          students={studentStatuses}
+          sheetRows={sheetSyncProof?.rows || []}
+          driveFiles={[
+            ...studentStatuses.flatMap((s) => s.driveFiles || []),
+            ...unidentifiedFiles,
+            ...outsideClassFiles,
+            ...duplicateFiles,
+          ]}
+          onClose={() => setShowDataHealthReportModal(false)}
           onToast={showToast}
         />
       )}

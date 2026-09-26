@@ -14,9 +14,11 @@ import {
   ChevronRight,
   Sun,
   Moon,
+  Activity,
 } from 'lucide-react';
 import { AuthUser } from '../types';
 import { ConnectivityStatusIndicator } from './ConnectivityStatusIndicator';
+import { ThemeToggleSwitch } from './ThemeToggleSwitch';
 
 interface HeaderProps {
   user: AuthUser | null;
@@ -38,6 +40,7 @@ interface HeaderProps {
   onQuickSyncPending?: () => void;
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
+  onOpenDataHealthReport?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -60,6 +63,7 @@ export const Header: React.FC<HeaderProps> = ({
   onQuickSyncPending,
   theme = 'dark',
   onToggleTheme,
+  onOpenDataHealthReport,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white">
@@ -132,31 +136,26 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Theme Toggle Button (Dark vs High-Contrast Light) */}
-          {onToggleTheme && (
+          {/* Data Health Report Button */}
+          {onOpenDataHealthReport && (
             <button
               type="button"
-              onClick={onToggleTheme}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold transition cursor-pointer shadow-sm touch-manipulation ${
-                theme === 'light'
-                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
-                  : 'bg-slate-950/70 hover:bg-slate-800 text-slate-200 border-slate-800'
-              }`}
-              title={theme === 'light' ? 'Switch to Dark Theme' : 'Switch to High-Contrast Light Theme'}
-              aria-label={theme === 'light' ? 'Switch to Dark Theme' : 'Switch to High-Contrast Light Theme'}
+              onClick={onOpenDataHealthReport}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 hover:bg-teal-600/20 text-teal-400 border border-teal-500/30 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer"
+              title="Run automated Data Health Report scan on Google Sheet & Drive records"
             >
-              {theme === 'light' ? (
-                <>
-                  <Moon className="w-3.5 h-3.5 text-indigo-500" />
-                  <span className="hidden sm:inline text-xs">Dark Mode</span>
-                </>
-              ) : (
-                <>
-                  <Sun className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline text-xs">Light Mode</span>
-                </>
-              )}
+              <Activity className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Data Health</span>
             </button>
+          )}
+
+          {/* CSS-Based Sliding Theme Toggle Switch */}
+          {onToggleTheme && (
+            <ThemeToggleSwitch
+              theme={theme}
+              onToggle={onToggleTheme}
+              showLabels={true}
+            />
           )}
 
           {/* Google Auth Status / Profile */}

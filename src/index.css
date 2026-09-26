@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Global smooth transition for background & text colors during theme switches */
+body, #root, main, header, footer, div, section, article, table, tr, td, th {
+  transition: background-color 0.25s ease-in-out, border-color 0.25s ease-in-out, color 0.15s ease-in-out;
+}
+
 /* ==========================================================================
    High-Contrast Light Theme Styles
    Triggered whenever .theme-light or [data-theme="light"] is present
