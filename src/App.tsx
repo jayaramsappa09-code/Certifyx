@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { supabase } from './services/supabaseClient';
 import {
   initAuth,
   googleSignIn,
@@ -107,6 +108,22 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(getAppSettings());
   const [driveConfig, setDriveConfig] = useState<GoogleDriveFolderConfig | null>(getSavedDriveConfig());
   const [sheetConfig, setSheetConfig] = useState<GoogleSheetConfig | null>(getSavedSheetConfig());
+
+  useEffect(() => {
+    if (!supabase) return;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        console.log('Supabase session restored:', event, session);
+        // Additional UI logic if required
+      } else {
+        console.log('Supabase session cleared:', event);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Core Data State (67 Students Roster)
   const [studentStatuses, setStudentStatuses] = useState<StudentStatusRecord[]>([]);

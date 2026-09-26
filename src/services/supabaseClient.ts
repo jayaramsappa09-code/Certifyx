@@ -206,6 +206,8 @@ export async function broadcastStudentStatusUpdate(
   }
 }
 
+export const supabase = getSupabaseClient();
+
 /**
  * Subscribe to Supabase Realtime Postgres Changes & Realtime Channel Broadcasts
  * Automatically updates dashboard statuses whenever another administrator modifies student record data.
