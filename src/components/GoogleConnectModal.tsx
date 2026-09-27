@@ -15,7 +15,6 @@ import {
   googleSignIn,
   signInWithGoogleRedirect,
   signInWithDirectToken,
-  signInAsQuickAdmin,
   GOOGLE_CLIENT_ID,
   DEFAULT_ADMIN_EMAILS,
 } from '../services/firebaseAuth';
@@ -102,12 +101,6 @@ export const GoogleConnectModal: React.FC<GoogleConnectModalProps> = ({
     }
   };
 
-  const handleQuickAdminAccess = () => {
-    const res = signInAsQuickAdmin('jayaramsappa09@gmail.com');
-    onSuccess(res.user.email || 'jayaramsappa09@gmail.com');
-    onClose();
-  };
-
   return (
     <div
       onClick={(e) => {
@@ -169,7 +162,7 @@ export const GoogleConnectModal: React.FC<GoogleConnectModalProps> = ({
             <li>Google Identity: Email & Profile for admin allowlist verification</li>
           </ul>
           <div className="pt-1 text-[11px] text-slate-400 border-t border-slate-800/60">
-            Authorized Administrators: <span className="text-slate-200 font-mono">jayaramsappa09@gmail.com</span>, <span className="text-slate-200 font-mono">jayaramsappa111@gmail.com</span>
+            Authorized Administrators: <span className="text-slate-200 font-mono">Environment/System Admin Allowlist</span>
           </div>
         </div>
 
@@ -233,32 +226,9 @@ export const GoogleConnectModal: React.FC<GoogleConnectModalProps> = ({
         <div className="relative flex py-1 items-center">
           <div className="flex-grow border-t border-slate-800"></div>
           <span className="flex-shrink mx-3 text-[11px] text-slate-500 uppercase tracking-wider font-semibold">
-            Alternative Connection Options
+            Manual Token Option
           </span>
           <div className="flex-grow border-t border-slate-800"></div>
-        </div>
-
-        {/* Quick Admin Access */}
-        <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-800/40 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Instant Administrator Access</span>
-            </span>
-            <span className="text-[10px] font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
-              Pre-authorized
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Continue immediately as <strong className="text-slate-200">jayaramsappa09@gmail.com</strong> to manage the 67-student roster, statuses, filters, and reports.
-          </p>
-          <button
-            onClick={handleQuickAdminAccess}
-            className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <span>Continue as Administrator (jayaramsappa09@gmail.com)</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
         </div>
 
         {/* Manual Token input toggle */}

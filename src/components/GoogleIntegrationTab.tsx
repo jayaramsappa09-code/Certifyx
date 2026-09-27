@@ -1264,7 +1264,7 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
                 className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-xs font-mono"
               >
                 <span className="text-slate-200">{email}</span>
-                {settings.adminEmails.length > 1 && email !== 'jayaramsappa09@gmail.com' && (
+                {settings.adminEmails.length > 1 && (
                   <button
                     type="button"
                     onClick={() => handleRemoveAdminEmail(email)}

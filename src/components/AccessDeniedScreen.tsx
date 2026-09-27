@@ -5,15 +5,11 @@ import { logout } from '../services/firebaseAuth';
 interface AccessDeniedScreenProps {
   userEmail: string | null;
   onRetryLogin: () => void;
-  onContinueAsGuest?: () => void;
-  onQuickAdmin?: () => void;
 }
 
 export const AccessDeniedScreen: React.FC<AccessDeniedScreenProps> = ({
   userEmail,
   onRetryLogin,
-  onContinueAsGuest,
-  onQuickAdmin,
 }) => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
@@ -30,7 +26,7 @@ export const AccessDeniedScreen: React.FC<AccessDeniedScreenProps> = ({
             Unauthorized Account
           </h1>
           <p className="text-slate-400 text-sm">
-            This is a private administrator portal for the 67-student class roster. Your Google account does not have administrative privileges.
+            This is a private administrator portal. Your Google account does not have administrative privileges.
           </p>
         </div>
 
@@ -48,19 +44,6 @@ export const AccessDeniedScreen: React.FC<AccessDeniedScreenProps> = ({
         </div>
 
         <div className="flex flex-col gap-3">
-          {onQuickAdmin && (
-            <>
-              <button
-                type="button"
-                onClick={onQuickAdmin}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition shadow-lg shadow-indigo-600/30 cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300" />
-                <span>Continue as Admin (jayaramsappa09@gmail.com)</span>
-              </button>
-            </>
-          )}
-
           <button
             type="button"
             onClick={async () => {
@@ -72,20 +55,6 @@ export const AccessDeniedScreen: React.FC<AccessDeniedScreenProps> = ({
             <RefreshCw className="w-4 h-4" />
             Switch Google Account
           </button>
-
-          {onContinueAsGuest && (
-            <button
-              type="button"
-              onClick={async () => {
-                await logout();
-                onContinueAsGuest();
-              }}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-xl transition cursor-pointer"
-            >
-              <span>Explore Dashboard (Viewer Mode)</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          )}
 
           <button
             type="button"
@@ -100,7 +69,7 @@ export const AccessDeniedScreen: React.FC<AccessDeniedScreenProps> = ({
         </div>
 
         <p className="text-xs text-slate-500">
-          Authorized administrators include: <span className="font-mono text-slate-400">jayaramsappa09@gmail.com</span>
+          Contact your system administrator if you believe this is an error.
         </p>
       </div>
     </div>

@@ -19,11 +19,13 @@ function notifyAuthListeners() {
   });
 }
 
-// Default Admin allowlist containing the user
-export const DEFAULT_ADMIN_EMAILS: string[] = [
-  'jayaramsappa09@gmail.com',
-  'jayaramsappa111@gmail.com',
-];
+// Default Admin allowlist loaded from environment or empty array
+export const DEFAULT_ADMIN_EMAILS: string[] = (
+  import.meta.env.VITE_ADMIN_EMAILS || ''
+)
+  .split(',')
+  .map((e: string) => e.trim())
+  .filter(Boolean);
 
 /**
  * Checks if the user email is on the authorized administrator allowlist
@@ -38,6 +40,11 @@ export function isAuthorizedAdmin(
     customAllowlist && customAllowlist.length > 0
       ? customAllowlist.map((e) => e.trim().toLowerCase())
       : DEFAULT_ADMIN_EMAILS.map((e) => e.trim().toLowerCase());
+
+  // If no allowlist is configured, any authenticated user with a verified email is permitted
+  if (allowlist.length === 0) {
+    return true;
+  }
 
   return allowlist.includes(normalizedEmail);
 }
@@ -292,32 +299,6 @@ export async function signInWithDirectToken(
 
   notifyAuthListeners();
   return { user, accessToken: trimmed };
-}
-
-/**
- * Quick access for authorized administrator (jayaramsappa09@gmail.com)
- */
-export function signInAsQuickAdmin(
-  email: string = 'jayaramsappa09@gmail.com'
-): { user: AuthUser; accessToken: string | null } {
-  const authUser: AuthUser = {
-    uid: 'admin-authorized-jayaram',
-    email: email,
-    displayName: 'Jayaram Sappa (Administrator)',
-    photoURL: null,
-    emailVerified: true,
-  };
-
-  cachedAuthUser = authUser;
-  try {
-    sessionStorage.setItem('ccam_auth_user', JSON.stringify(authUser));
-    if (cachedAccessToken) {
-      sessionStorage.setItem('ccam_auth_token', cachedAccessToken);
-    }
-  } catch {}
-
-  notifyAuthListeners();
-  return { user: authUser, accessToken: cachedAccessToken };
 }
 
 /**

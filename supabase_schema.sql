@@ -63,7 +63,14 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   category TEXT
 );
 
--- 5. Seed exact 67-student roster and roll numbers into class_roster and student_statuses
+-- 5. Create admins table for RLS authorization
+CREATE TABLE IF NOT EXISTS public.admins (
+  email TEXT PRIMARY KEY,
+  role TEXT DEFAULT 'admin',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6. Seed exact 67-student roster into class_roster and student_statuses
 INSERT INTO public.class_roster (roll_no, name) VALUES
 ('25A31A05DV', 'ADABALA NAVYA RAMYA SREE'),
 ('25A31A05DW', 'BEVARA PRASANTHI'),
@@ -138,32 +145,83 @@ SELECT roll_no, name, false, false, false, 'NOT STARTED'
 FROM public.class_roster
 ON CONFLICT (roll_no) DO NOTHING;
 
--- 6. Enable Row Level Security (RLS)
+-- 7. Enable Row Level Security (RLS)
 ALTER TABLE public.class_roster ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_statuses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_status ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sync_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
 
--- 7. Configure Permissive RLS Policies for Anon & Authenticated Access
+-- Helper function to verify if current authenticated caller is an admin
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1 
+    FROM public.admins 
+    WHERE LOWER(email) = LOWER(auth.jwt() ->> 'email')
+  );
+$$;
+
+-- 8. Strict RLS Policies: Only verified admins can read/write
+DROP POLICY IF EXISTS "Admin full access on class_roster" ON public.class_roster;
 DROP POLICY IF EXISTS "Public access on class_roster" ON public.class_roster;
-CREATE POLICY "Public access on class_roster" ON public.class_roster FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Admin full access on class_roster" ON public.class_roster
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "Admin full access on student_statuses" ON public.student_statuses;
 DROP POLICY IF EXISTS "Public access on student_statuses" ON public.student_statuses;
-CREATE POLICY "Public access on student_statuses" ON public.student_statuses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Admin full access on student_statuses" ON public.student_statuses
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "Admin full access on students" ON public.students;
 DROP POLICY IF EXISTS "Public access on students" ON public.students;
-CREATE POLICY "Public access on students" ON public.students FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Admin full access on students" ON public.students
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "Admin full access on student_status" ON public.student_status;
 DROP POLICY IF EXISTS "Public access on student_status" ON public.student_status;
-CREATE POLICY "Public access on student_status" ON public.student_status FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Admin full access on student_status" ON public.student_status
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "Admin full access on sync_history" ON public.sync_history;
 DROP POLICY IF EXISTS "Public access on sync_history" ON public.sync_history;
-CREATE POLICY "Public access on sync_history" ON public.sync_history FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Admin full access on sync_history" ON public.sync_history
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "Admin full access on audit_logs" ON public.audit_logs;
 DROP POLICY IF EXISTS "Public access on audit_logs" ON public.audit_logs;
-CREATE POLICY "Public access on audit_logs" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Admin full access on audit_logs" ON public.audit_logs
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admin read-only on admins" ON public.admins;
+CREATE POLICY "Admin read-only on admins" ON public.admins
+  FOR SELECT
+  TO authenticated
+  USING (public.is_admin());
 
 -- 8. Enable Realtime Publications for live cross-admin syncing
 DO $$

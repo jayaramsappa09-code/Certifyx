@@ -97,6 +97,7 @@ import { ManualReviewQueue } from './components/ManualReviewQueue';
 import { GoogleIntegrationTab } from './components/GoogleIntegrationTab';
 import { SyncHistoryTab } from './components/SyncHistoryTab';
 import { AuditLogTab } from './components/AuditLogTab';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { DocumentationTab } from './components/DocumentationTab';
 import { SyncReportModal } from './components/SyncReportModal';
 import { FirstSyncPreviewModal } from './components/FirstSyncPreviewModal';
@@ -2000,11 +2001,6 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
       <AccessDeniedScreen
         userEmail={currentUser?.email || null}
         onRetryLogin={handleGoogleLogin}
-        onContinueAsGuest={() => setIsAccessDenied(false)}
-        onQuickAdmin={() => {
-          handleGoogleConnectSuccess('jayaramsappa09@gmail.com');
-          setIsAccessDenied(false);
-        }}
       />
     );
   }
@@ -2222,87 +2218,93 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
             />
 
             {/* Student Table with Integrated Data Mismatch Section */}
-            <StudentTable
-              students={studentStatuses}
-              sheetRows={sheetSyncProof?.rows || []}
-              lastScannedTimestamp={
-                lastSyncReport?.timestamp ||
-                driveConfig?.lastSynced ||
-                sheetConfig?.lastSynced ||
-                sheetSyncProof?.timestamp ||
-                null
-              }
-              dateFilterConfig={dateFilterConfig}
-              onToggleSubmitted={handleToggleSubmitted}
-              onToggleDriveUploaded={handleToggleDriveUploaded}
-              onToggleSheetUpdated={handleToggleSheetUpdated}
-              onBatchSetSubmitted={handleBatchSetSubmitted}
-              onBatchSetDriveUploaded={handleBatchSetDriveUploaded}
-              onBatchSetSheetUpdated={handleBatchSetSheetUpdated}
-              onOpenDetails={(s) => setSelectedStudentForDetail(s)}
-              activeFilter={activeFilter}
-              setActiveFilter={setActiveFilter}
-              onExportClassSummaryCsv={handleExportClassSummaryCsv}
-              onExportIndividualCertsCsv={handleExportIndividualCertsCsv}
-              onExportOutsideClassCsv={handleExportOutsideClassCsv}
-              onExportReviewQueueCsv={handleExportReviewQueueCsv}
-              onExportAuditLogsCsv={handleExportAuditLogsCsv}
-              onExportAllCsvs={handleExportAllCsvs}
-              onExportSummaryReport={handleExportSummaryReport}
-              onOpenAdvancedExport={() => setShowAdvancedExportModal(true)}
-              onOpenBulkMapping={() => setShowBulkMappingModal(true)}
-              onOpenEmailReminder={(targetStudent) => {
-                setTargetStudentForReminder(targetStudent || null);
-                setShowEmailReminderModal(true);
-              }}
-              onOpenDataHealthReport={() => setShowDataHealthReportModal(true)}
-              onAddRosterStudent={handleAddRosterStudent}
-              onBatchAddRosterStudents={handleBatchAddRosterStudents}
-              onEditRosterStudent={handleEditRosterStudent}
-              onDeleteRosterStudent={handleDeleteRosterStudent}
-              onToast={showToast}
-            />
+            <ErrorBoundary sectionName="Student Roster & Matrix">
+              <StudentTable
+                students={studentStatuses}
+                sheetRows={sheetSyncProof?.rows || []}
+                lastScannedTimestamp={
+                  lastSyncReport?.timestamp ||
+                  driveConfig?.lastSynced ||
+                  sheetConfig?.lastSynced ||
+                  sheetSyncProof?.timestamp ||
+                  null
+                }
+                dateFilterConfig={dateFilterConfig}
+                onToggleSubmitted={handleToggleSubmitted}
+                onToggleDriveUploaded={handleToggleDriveUploaded}
+                onToggleSheetUpdated={handleToggleSheetUpdated}
+                onBatchSetSubmitted={handleBatchSetSubmitted}
+                onBatchSetDriveUploaded={handleBatchSetDriveUploaded}
+                onBatchSetSheetUpdated={handleBatchSetSheetUpdated}
+                onOpenDetails={(s) => setSelectedStudentForDetail(s)}
+                activeFilter={activeFilter}
+                setActiveFilter={setActiveFilter}
+                onExportClassSummaryCsv={handleExportClassSummaryCsv}
+                onExportIndividualCertsCsv={handleExportIndividualCertsCsv}
+                onExportOutsideClassCsv={handleExportOutsideClassCsv}
+                onExportReviewQueueCsv={handleExportReviewQueueCsv}
+                onExportAuditLogsCsv={handleExportAuditLogsCsv}
+                onExportAllCsvs={handleExportAllCsvs}
+                onExportSummaryReport={handleExportSummaryReport}
+                onOpenAdvancedExport={() => setShowAdvancedExportModal(true)}
+                onOpenBulkMapping={() => setShowBulkMappingModal(true)}
+                onOpenEmailReminder={(targetStudent) => {
+                  setTargetStudentForReminder(targetStudent || null);
+                  setShowEmailReminderModal(true);
+                }}
+                onOpenDataHealthReport={() => setShowDataHealthReportModal(true)}
+                onAddRosterStudent={handleAddRosterStudent}
+                onBatchAddRosterStudents={handleBatchAddRosterStudents}
+                onEditRosterStudent={handleEditRosterStudent}
+                onDeleteRosterStudent={handleDeleteRosterStudent}
+                onToast={showToast}
+              />
+            </ErrorBoundary>
           </div>
         )}
 
         {/* Tab 2: Needs Review Queue */}
         {activeTab === 'review' && (
-          <ManualReviewQueue
-            unidentifiedFiles={unidentifiedFiles}
-            outsideClassFiles={outsideClassFiles}
-            ambiguousCertFiles={ambiguousCertFiles}
-            duplicateFiles={duplicateFiles}
-            onRefreshAfterResolution={handleRefreshAfterResolution}
-            userEmail={currentUser?.email || 'admin'}
-          />
+          <ErrorBoundary sectionName="Review Queue">
+            <ManualReviewQueue
+              unidentifiedFiles={unidentifiedFiles}
+              outsideClassFiles={outsideClassFiles}
+              ambiguousCertFiles={ambiguousCertFiles}
+              duplicateFiles={duplicateFiles}
+              onRefreshAfterResolution={handleRefreshAfterResolution}
+              userEmail={currentUser?.email || 'admin'}
+            />
+          </ErrorBoundary>
         )}
 
         {/* Tab 3: Google Integration Settings */}
         {activeTab === 'integration' && (
-          <GoogleIntegrationTab
-            accessToken={accessToken}
-            userEmail={currentUser?.email || 'admin'}
-            driveConfig={driveConfig}
-            sheetConfig={sheetConfig}
-            settings={settings}
-            onUpdateDriveConfig={(c) => {
-              setDriveConfig(c);
-              saveDriveConfig(c);
-            }}
-            onUpdateSheetConfig={(c) => {
-              setSheetConfig(c);
-              saveSheetConfig(c);
-            }}
-            onUpdateSettings={(newSettings) => {
-              const updated = saveAppSettings(newSettings);
-              setSettings(updated);
-            }}
-            onConnectGoogle={handleGoogleLogin}
-            onOpenConnectOptions={() => handleGoogleLogin(true)}
-            onOpenSheetProof={() => setShowSheetProofModal(true)}
-            onDisconnectGoogle={handleGoogleLogout}
-            onTriggerSync={handleSyncNow}
-          />
+          <ErrorBoundary sectionName="Google Integration Settings">
+            <GoogleIntegrationTab
+              accessToken={accessToken}
+              userEmail={currentUser?.email || 'admin'}
+              driveConfig={driveConfig}
+              sheetConfig={sheetConfig}
+              settings={settings}
+              onUpdateDriveConfig={(c) => {
+                setDriveConfig(c);
+                saveDriveConfig(c);
+              }}
+              onUpdateSheetConfig={(c) => {
+                setSheetConfig(c);
+                saveSheetConfig(c);
+              }}
+              onUpdateSettings={(newSettings) => {
+                const updated = saveAppSettings(newSettings);
+                setSettings(updated);
+              }}
+              onConnectGoogle={handleGoogleLogin}
+              onOpenConnectOptions={() => handleGoogleLogin(true)}
+              onOpenSheetProof={() => setShowSheetProofModal(true)}
+              onDisconnectGoogle={handleGoogleLogout}
+              onTriggerSync={handleSyncNow}
+            />
+          </ErrorBoundary>
         )}
 
         {/* Tab 4: Sync Run History */}

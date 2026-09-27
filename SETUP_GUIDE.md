@@ -70,19 +70,26 @@ The application uses Firebase Auth with Google provider for secure, client-side 
 
 ---
 
-## 4. Supabase Setup (Optional for cloud sync)
+### 4. Supabase Setup & Row Level Security (RLS)
 
 If you are using Supabase for cloud persistence:
 1. Create a project at [supabase.com](https://supabase.com).
 2. Open the **SQL Editor** in your Supabase dashboard.
 3. Paste and run the entire contents of `/supabase_schema.sql`.
-4. Ensure the `admins` table contains your authorized email:
+4. Seed the `admins` table with your authorized administrator emails:
    ```sql
    INSERT INTO public.admins (email, role)
-   VALUES ('jayaramsappa09@gmail.com', 'super_admin')
+   VALUES ('admin@example.com', 'super_admin')
    ON CONFLICT (email) DO NOTHING;
    ```
-5. Row Level Security (RLS) is automatically enabled on all tables, ensuring only authenticated administrators whose Google email exists in the `admins` table can read or modify data.
+5. **Strict Row Level Security (RLS)**:
+   - RLS is enforced on `class_roster`, `student_statuses`, `sync_history`, `audit_logs`, and `admins`.
+   - Access is restricted exclusively to authenticated callers (`TO authenticated`) whose JWT email claim (`auth.jwt() ->> 'email'`) matches an entry in `public.admins`.
+   - Public and anonymous access (`anon`) is denied by default.
+
+### 🌉 Firebase Auth & Supabase Auth JWT Bridge
+- **Direct Supabase OAuth**: When logging in via `signInWithOAuth({ provider: 'google' })`, Supabase automatically signs the user's JWT containing `auth.jwt() ->> 'email'`.
+- **Firebase Auth Token Bridge**: If using client-side Firebase Google Auth, pass the user's verified Firebase ID Token to Supabase via `supabase.auth.setSession({ access_token, refresh_token })` or configure Supabase Custom JWT / Third-Party Auth in the Supabase Dashboard to validate Firebase JWT tokens.
 
 ---
 
