@@ -2279,7 +2279,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           initialTab={rosterManagementTab}
           onAddRosterStudent={(rollNo, name) => {
             if (onAddRosterStudent) {
-              onAddRosterStudent(rollNo, name);
+              return onAddRosterStudent(rollNo, name);
             }
           }}
           onBatchAddRosterStudents={async (newStudents) => {

@@ -60,9 +60,11 @@ import { runSyncEngine, SyncEngineResult } from './services/syncEngine';
 import {
   FIXED_CLASS_ROSTER,
   addRosterStudent,
+  addOrUpdateRosterStudent,
   batchAddRosterStudents,
   editRosterStudent,
   deleteRosterStudent,
+  normalizeRollNumber,
 } from './data/classRoster';
 import {
   StudentStatusRecord,
@@ -1310,9 +1312,19 @@ export default function App() {
 
   const handleAddRosterStudent = useCallback((rollNo: string, name: string) => {
     try {
-      const cleanRoll = rollNo.toUpperCase().trim();
-      const cleanName = name.trim();
-      addRosterStudent({ rollNo: cleanRoll, name: cleanName });
+      const cleanRoll = normalizeRollNumber(rollNo);
+      const cleanName = (name || '').trim();
+
+      if (!cleanRoll) {
+        showToast('Please enter a valid Roll Number.', 'error');
+        throw new Error('Valid Roll Number is required.');
+      }
+      if (!cleanName) {
+        showToast('Please enter the Student Name.', 'error');
+        throw new Error('Student Name is required.');
+      }
+
+      const { action } = addOrUpdateRosterStudent({ rollNo: cleanRoll, name: cleanName });
       
       // Permanently write to Supabase database so other administrators see them!
       saveStudentStatusesToSupabase([{
@@ -1326,21 +1338,35 @@ export default function App() {
         updatedAt: new Date().toISOString(),
       }]);
 
-      addAuditLog('Roster Student Added', currentUser?.email || 'admin', `Added student ${cleanName} (${cleanRoll})`, 'SETTINGS');
-      showToast(`Successfully added student ${cleanName} to roster!`, 'success');
+      addAuditLog(
+        action === 'ADDED' ? 'Roster Student Added' : 'Roster Student Updated',
+        currentUser?.email || 'admin',
+        `${action === 'ADDED' ? 'Added' : 'Updated'} student ${cleanName} (${cleanRoll})`,
+        'SETTINGS'
+      );
+
+      showToast(
+        action === 'ADDED'
+          ? `🎉 Successfully added ${cleanName} (${cleanRoll}) to roster!`
+          : `✅ Student ${cleanRoll} updated to "${cleanName}" in roster!`,
+        'success'
+      );
       refreshLocalSync();
     } catch (e: any) {
+      console.error('Failed to add/update student:', e);
       showToast(e.message || 'Failed to add student.', 'error');
+      throw e;
     }
   }, [currentUser, refreshLocalSync]);
 
   const handleBatchAddRosterStudents = useCallback(async (students: Array<{ rollNo: string; name: string }>) => {
     try {
       const result = batchAddRosterStudents(students);
-      if (result.added.length > 0) {
-        // Permanently write all newly added students to Supabase
+      const allTouched = [...result.added, ...result.updated];
+      if (allTouched.length > 0) {
+        // Permanently write all touched students to Supabase
         await saveStudentStatusesToSupabase(
-          result.added.map((s) => ({
+          allTouched.map((s) => ({
             rollNo: s.rollNo,
             name: s.name,
             driveUploaded: false,
@@ -1353,9 +1379,9 @@ export default function App() {
         );
 
         addAuditLog(
-          'Batch Roster Students Added',
+          'Batch Roster Students Synced',
           currentUser?.email || 'admin',
-          `Batch imported ${result.added.length} student(s) to class roster`,
+          `Batch imported ${result.added.length} added, ${result.updated.length} updated in class roster`,
           'SETTINGS'
         );
 

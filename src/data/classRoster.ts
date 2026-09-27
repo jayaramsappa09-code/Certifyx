@@ -122,28 +122,70 @@ if (typeof window !== 'undefined') {
 /**
  * Dynamic Student Roster Mutators (CRUD Actions)
  */
-export function addRosterStudent(student: Student): void {
-  const normalizedRoll = student.rollNo.toUpperCase().trim();
-  if (FIXED_CLASS_ROSTER.some(s => s.rollNo.toUpperCase().trim() === normalizedRoll)) {
-    throw new Error(`Student with Roll Number ${student.rollNo} already exists.`);
+export function addOrUpdateRosterStudent(student: Student): {
+  action: 'ADDED' | 'UPDATED';
+  student: Student;
+} {
+  const cleanRoll = normalizeRollNumber(student.rollNo);
+  const cleanName = (student.name || '').trim();
+
+  if (!cleanRoll) {
+    throw new Error('Valid Roll Number is required.');
   }
-  FIXED_CLASS_ROSTER.push(student);
+  if (!cleanName) {
+    throw new Error('Student Name is required.');
+  }
+
+  const existingIndex = FIXED_CLASS_ROSTER.findIndex(
+    (s) => normalizeRollNumber(s.rollNo) === cleanRoll
+  );
+
+  let action: 'ADDED' | 'UPDATED' = 'ADDED';
+
+  if (existingIndex !== -1) {
+    FIXED_CLASS_ROSTER[existingIndex].name = cleanName;
+    if (student.email) FIXED_CLASS_ROSTER[existingIndex].email = student.email;
+    if (student.phone) FIXED_CLASS_ROSTER[existingIndex].phone = student.phone;
+    action = 'UPDATED';
+  } else {
+    const newStudent: Student = {
+      rollNo: cleanRoll,
+      name: cleanName,
+      email: student.email,
+      phone: student.phone,
+    };
+    FIXED_CLASS_ROSTER.push(newStudent);
+    action = 'ADDED';
+  }
+
   try {
     localStorage.setItem('ccam_dynamic_roster', JSON.stringify(FIXED_CLASS_ROSTER));
-  } catch {}
+  } catch (e) {
+    console.error('Failed to save updated roster to localStorage:', e);
+  }
   updateRosterMap();
+
+  return {
+    action,
+    student: FIXED_CLASS_ROSTER[existingIndex !== -1 ? existingIndex : FIXED_CLASS_ROSTER.length - 1],
+  };
+}
+
+export function addRosterStudent(student: Student): void {
+  addOrUpdateRosterStudent(student);
 }
 
 export function batchAddRosterStudents(students: Student[]): {
   added: Student[];
+  updated: Student[];
   skipped: Array<{ student: Student; reason: string }>;
 } {
   const added: Student[] = [];
+  const updated: Student[] = [];
   const skipped: Array<{ student: Student; reason: string }> = [];
-  const existingRolls = new Set(FIXED_CLASS_ROSTER.map((s) => s.rollNo.toUpperCase().trim()));
 
   for (const s of students) {
-    const cleanRoll = (s.rollNo || '').toUpperCase().trim();
+    const cleanRoll = normalizeRollNumber(s.rollNo);
     const cleanName = (s.name || '').trim();
 
     if (!cleanRoll) {
@@ -154,27 +196,22 @@ export function batchAddRosterStudents(students: Student[]): {
       skipped.push({ student: s, reason: 'Missing student name' });
       continue;
     }
-    if (existingRolls.has(cleanRoll)) {
-      skipped.push({ student: s, reason: `Student with roll number ${cleanRoll} already exists in roster` });
-      continue;
-    }
 
-    const newStudent: Student = { rollNo: cleanRoll, name: cleanName, email: s.email, phone: s.phone };
-    FIXED_CLASS_ROSTER.push(newStudent);
-    existingRolls.add(cleanRoll);
-    added.push(newStudent);
+    const { action, student: finalStudent } = addOrUpdateRosterStudent({
+      rollNo: cleanRoll,
+      name: cleanName,
+      email: s.email,
+      phone: s.phone,
+    });
+
+    if (action === 'ADDED') {
+      added.push(finalStudent);
+    } else {
+      updated.push(finalStudent);
+    }
   }
 
-  if (added.length > 0) {
-    try {
-      localStorage.setItem('ccam_dynamic_roster', JSON.stringify(FIXED_CLASS_ROSTER));
-    } catch (e) {
-      console.error('Failed to save updated roster to localStorage:', e);
-    }
-    updateRosterMap();
-  }
-
-  return { added, skipped };
+  return { added, updated, skipped };
 }
 
 export function editRosterStudent(rollNo: string, newName: string): void {

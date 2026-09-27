@@ -242,6 +242,13 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
     );
   }, [rosterSearch, FIXED_CLASS_ROSTER.length]);
 
+  // Check if roll number entered in single form matches an existing student
+  const normalizedInputRoll = useMemo(() => normalizeRollNumber(singleRollNo), [singleRollNo]);
+  const existingMatchedStudent = useMemo(() => {
+    if (!normalizedInputRoll) return null;
+    return FIXED_CLASS_ROSTER.find((s) => normalizeRollNumber(s.rollNo) === normalizedInputRoll);
+  }, [normalizedInputRoll, FIXED_CLASS_ROSTER.length]);
+
   // Load sample data
   const handleLoadSample = () => {
     setInputText(SAMPLE_DATA);
@@ -271,7 +278,7 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
   // Handle single student submit
   const handleSingleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanRoll = singleRollNo.toUpperCase().trim();
+    const cleanRoll = normalizeRollNumber(singleRollNo);
     const cleanName = singleName.trim();
 
     if (!cleanRoll) {
@@ -282,19 +289,15 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
       onToast?.('Please enter the full student name.', 'error');
       return;
     }
-    if (existingRollSet.has(cleanRoll)) {
-      onToast?.(`Student with roll number ${cleanRoll} already exists in roster!`, 'error');
-      return;
-    }
 
     setSingleSubmitting(true);
     try {
-      onAddRosterStudent(cleanRoll, cleanName);
+      await onAddRosterStudent(cleanRoll, cleanName);
       setSingleRollNo('');
       setSingleName('');
-      onToast?.(`🎉 Student ${cleanName} (${cleanRoll}) permanently added to class roster!`, 'success');
       setActiveTab('VIEW_ROSTER');
     } catch (err: any) {
+      console.error('Failed to add student to roster:', err);
       onToast?.(err.message || 'Failed to add student to roster.', 'error');
     } finally {
       setSingleSubmitting(false);
@@ -789,6 +792,25 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
                   </p>
                 </div>
 
+                {existingMatchedStudent && (
+                  <div className="p-3 bg-blue-950/40 border border-blue-800/60 rounded-xl text-xs text-blue-300 flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-white">{existingMatchedStudent.rollNo}</span> is registered as &ldquo;
+                      <span className="font-bold text-white">{existingMatchedStudent.name}</span>&rdquo;.
+                      <p className="text-[11px] text-slate-400 mt-0.5">Submitting will update their name in the class roster.</p>
+                    </div>
+                    {!singleName && (
+                      <button
+                        type="button"
+                        onClick={() => setSingleName(existingMatchedStudent.name)}
+                        className="text-xs text-blue-400 hover:text-blue-200 underline font-semibold ml-2 cursor-pointer shrink-0"
+                      >
+                        Copy Name
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-300 block">
                     Full Student Name:
@@ -820,7 +842,13 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
                   className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl transition shadow-md shadow-blue-600/20 flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
-                  <span>{singleSubmitting ? 'Adding...' : 'Add Student Permanently'}</span>
+                  <span>
+                    {singleSubmitting
+                      ? 'Saving...'
+                      : existingMatchedStudent
+                      ? 'Update Student in Roster'
+                      : 'Add Student Permanently'}
+                  </span>
                 </button>
               </div>
             </form>
