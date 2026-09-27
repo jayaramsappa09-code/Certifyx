@@ -56,6 +56,7 @@ import {
   subscribeToStudentStatusesRealtime,
   broadcastStudentStatusUpdate,
   fetchStudentStatusesFromSupabase,
+  fetchClassRosterFromSupabase,
   saveStudentStatusesToSupabase,
   saveClassRosterToSupabase,
   pushFullDatabaseToSupabase,
@@ -408,17 +409,40 @@ export default function App() {
   useEffect(() => {
     async function loadFromSupabase() {
       try {
-        const supaStatuses = await fetchStudentStatusesFromSupabase();
-        if (supaStatuses && supaStatuses.length > 0) {
-          // 1. Dynamically sync new students from Supabase to FIXED_CLASS_ROSTER roster first!
-          let rosterChanged = false;
-          supaStatuses.forEach((ss) => {
-            const cleanRoll = ss.rollNo.toUpperCase().trim();
+        let rosterChanged = false;
+
+        // 1. Fetch class_roster numbers & names from Supabase
+        const supaRoster = await fetchClassRosterFromSupabase();
+        if (supaRoster && supaRoster.length > 0) {
+          supaRoster.forEach((sr) => {
+            const cleanRoll = (sr.rollNo || '').toUpperCase().trim();
+            if (!cleanRoll) return;
             const exists = FIXED_CLASS_ROSTER.some(
               (r) => r.rollNo.toUpperCase().trim() === cleanRoll
             );
-            if (!exists && ss.name) {
-              addRosterStudent({ rollNo: cleanRoll, name: ss.name });
+            if (!exists) {
+              addRosterStudent({
+                rollNo: cleanRoll,
+                name: sr.name || `Student ${cleanRoll}`,
+                email: sr.email,
+                phone: sr.phone,
+              });
+              rosterChanged = true;
+            }
+          });
+        }
+
+        // 2. Fetch student_statuses from Supabase
+        const supaStatuses = await fetchStudentStatusesFromSupabase();
+        if (supaStatuses && supaStatuses.length > 0) {
+          supaStatuses.forEach((ss) => {
+            const cleanRoll = (ss.rollNo || '').toUpperCase().trim();
+            if (!cleanRoll) return;
+            const exists = FIXED_CLASS_ROSTER.some(
+              (r) => r.rollNo.toUpperCase().trim() === cleanRoll
+            );
+            if (!exists) {
+              addRosterStudent({ rollNo: cleanRoll, name: ss.name || `Student ${cleanRoll}` });
               rosterChanged = true;
             }
           });
@@ -443,7 +467,10 @@ export default function App() {
               return s;
             })
           );
-          showToast('🔋 Restored student status data from Supabase DB.', 'success');
+          showToast('🔋 Restored student data & roster from Supabase DB.', 'success');
+        } else if (rosterChanged) {
+          refreshLocalSync();
+          showToast(`🔋 Restored ${FIXED_CLASS_ROSTER.length} class roster students from Supabase.`, 'success');
         }
       } catch (err) {
         console.warn('Failed to load initial data from Supabase:', err);
@@ -1360,25 +1387,21 @@ export default function App() {
     });
   };
 
-  const handleAddRosterStudent = useCallback((rollNo: string, name: string) => {
+  const handleAddRosterStudent = useCallback(async (rollNo: string, name: string) => {
     try {
       const cleanRoll = normalizeRollNumber(rollNo);
-      const cleanName = (name || '').trim();
+      const cleanName = (name || '').trim() || `Student ${cleanRoll}`;
 
       if (!cleanRoll) {
         showToast('Please enter a valid Roll Number.', 'error');
         throw new Error('Valid Roll Number is required.');
       }
-      if (!cleanName) {
-        showToast('Please enter the Student Name.', 'error');
-        throw new Error('Student Name is required.');
-      }
 
       const { action } = addOrUpdateRosterStudent({ rollNo: cleanRoll, name: cleanName });
       
       // Permanently write to Supabase database (both class_roster and student_statuses) so other administrators see them!
-      saveClassRosterToSupabase([{ rollNo: cleanRoll, name: cleanName }]);
-      saveStudentStatusesToSupabase([{
+      await saveClassRosterToSupabase([{ rollNo: cleanRoll, name: cleanName }]);
+      await saveStudentStatusesToSupabase([{
         rollNo: cleanRoll,
         name: cleanName,
         driveUploaded: false,
@@ -1402,6 +1425,9 @@ export default function App() {
           : `✅ Student ${cleanRoll} updated to "${cleanName}" in roster!`,
         'success'
       );
+
+      // Reset filter to 'ALL' so the newly added student is immediately visible in the active table view!
+      setActiveFilter('ALL');
       refreshLocalSync();
     } catch (e: any) {
       console.error('Failed to add/update student:', e);
@@ -1437,6 +1463,8 @@ export default function App() {
           'SETTINGS'
         );
 
+        // Reset filter to 'ALL' so newly imported students are visible right away
+        setActiveFilter('ALL');
         refreshLocalSync();
       }
       return result;

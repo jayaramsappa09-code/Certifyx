@@ -149,8 +149,20 @@ export const BatchImportStudentsModal: React.FC<BatchImportStudentsModalProps> =
           if (spaceIdx > 0) {
             rollNo = trimmed.slice(0, spaceIdx).trim();
             name = trimmed.slice(spaceIdx + 1).trim();
+          } else {
+            // Check if whole line is just a single roll number
+            const singleRoll = extractRollNumberFromText(trimmed) || trimmed.replace(/[^a-zA-Z0-9]/g, '');
+            if (singleRoll && singleRoll.length >= 4) {
+              rollNo = singleRoll;
+              name = `Student ${singleRoll.toUpperCase()}`;
+            }
           }
         }
+      }
+
+      // If rollNo found but name is missing, provide smart fallback name
+      if (rollNo && !name) {
+        name = `Student ${rollNo.toUpperCase().trim()}`;
       }
 
       // Clean roll number and name
@@ -166,9 +178,9 @@ export const BatchImportStudentsModal: React.FC<BatchImportStudentsModalProps> =
       let status: 'READY' | 'DUPLICATE' | 'INVALID' = 'READY';
       let message = 'Ready to import';
 
-      if (!rollNo || !name) {
+      if (!rollNo) {
         status = 'INVALID';
-        message = !rollNo ? 'Missing roll number' : 'Missing student name';
+        message = 'Missing roll number';
       } else if (existingRollSet.has(rollNo.toUpperCase().trim())) {
         status = 'DUPLICATE';
         message = 'Already exists in class roster';

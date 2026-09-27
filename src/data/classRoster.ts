@@ -127,13 +127,10 @@ export function addOrUpdateRosterStudent(student: Student): {
   student: Student;
 } {
   const cleanRoll = normalizeRollNumber(student.rollNo);
-  const cleanName = (student.name || '').trim();
+  const cleanName = (student.name || '').trim() || `Student ${cleanRoll}`;
 
   if (!cleanRoll) {
     throw new Error('Valid Roll Number is required.');
-  }
-  if (!cleanName) {
-    throw new Error('Student Name is required.');
   }
 
   const existingIndex = FIXED_CLASS_ROSTER.findIndex(
@@ -171,8 +168,11 @@ export function addOrUpdateRosterStudent(student: Student): {
   };
 }
 
-export function addRosterStudent(student: Student): void {
-  addOrUpdateRosterStudent(student);
+export function addRosterStudent(student: Student): {
+  action: 'ADDED' | 'UPDATED';
+  student: Student;
+} {
+  return addOrUpdateRosterStudent(student);
 }
 
 export function batchAddRosterStudents(students: Student[]): {
@@ -186,14 +186,10 @@ export function batchAddRosterStudents(students: Student[]): {
 
   for (const s of students) {
     const cleanRoll = normalizeRollNumber(s.rollNo);
-    const cleanName = (s.name || '').trim();
+    const cleanName = (s.name || '').trim() || `Student ${cleanRoll}`;
 
     if (!cleanRoll) {
       skipped.push({ student: s, reason: 'Missing roll number' });
-      continue;
-    }
-    if (!cleanName) {
-      skipped.push({ student: s, reason: 'Missing student name' });
       continue;
     }
 

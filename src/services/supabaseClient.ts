@@ -388,6 +388,44 @@ export async function broadcastStudentStatusUpdate(
 }
 
 /**
+ * Fetch all class roster records from Supabase database
+ */
+export async function fetchClassRosterFromSupabase(): Promise<Array<{ rollNo: string; name: string; email?: string; phone?: string }> | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  try {
+    const { data, error } = await client
+      .from('class_roster')
+      .select('*')
+      .order('roll_no', { ascending: true });
+    if (error) {
+      // Try fallback to 'students' table if class_roster isn't created yet
+      try {
+        const fallback = await client.from('students').select('*').order('roll_no', { ascending: true });
+        if (!fallback.error && fallback.data && fallback.data.length > 0) {
+          return fallback.data.map((rec: any) => ({
+            rollNo: rec.roll_no || rec.rollNo,
+            name: rec.name || '',
+            email: rec.email,
+            phone: rec.phone,
+          }));
+        }
+      } catch {}
+      return null;
+    }
+    return (data || []).map((rec: any) => ({
+      rollNo: rec.roll_no || rec.rollNo,
+      name: rec.name || '',
+      email: rec.email,
+      phone: rec.phone,
+    }));
+  } catch (err) {
+    console.warn('Failed to fetch class roster from Supabase:', err);
+    return null;
+  }
+}
+
+/**
  * Fetch all student statuses from Supabase database
  */
 export async function fetchStudentStatusesFromSupabase(): Promise<StudentStatusRealtimePayload[] | null> {
