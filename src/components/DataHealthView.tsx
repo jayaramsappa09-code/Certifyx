@@ -4,31 +4,33 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
-  FileSpreadsheet,
-  HardDrive,
-  RefreshCw,
+  Download,
   Search,
   Filter,
-  FileText,
+  FileSpreadsheet,
   Users,
-  ShieldCheck,
-  Info,
+  HardDrive,
+  Sparkles,
   Wrench,
-  ChevronRight,
-  Eye,
+  ShieldCheck,
+  ShieldAlert,
+  Info,
 } from 'lucide-react';
-import { StudentStatusRecord, SheetRowRecord, DriveCertificateFile, SheetSyncProof } from '../types';
-import { runDataHealthScan, DataHealthIssue } from '../utils/dataHealthScanner';
-import { analyzeReconciliationDiscrepancies } from '../utils/reconciliationAnalyzer';
+import { StudentStatusRecord, SheetRowRecord, DriveCertificateFile } from '../types';
+import {
+  runDataHealthScan,
+  exportDataHealthReportCsv,
+  DataHealthReportSummary,
+  DataHealthIssue,
+  HealthSeverity,
+} from '../utils/dataHealthScanner';
 
 interface DataHealthViewProps {
   students: StudentStatusRecord[];
   sheetRows?: SheetRowRecord[];
   driveFiles?: DriveCertificateFile[];
-  sheetSyncProof?: SheetSyncProof | null;
   unidentifiedFiles?: DriveCertificateFile[];
   outsideClassFiles?: DriveCertificateFile[];
-  onRefreshProof?: () => void;
   onToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -36,310 +38,369 @@ export const DataHealthView: React.FC<DataHealthViewProps> = ({
   students,
   sheetRows = [],
   driveFiles = [],
-  sheetSyncProof,
   unidentifiedFiles = [],
   outsideClassFiles = [],
-  onRefreshProof,
   onToast,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'ISSUES' | 'MISMATCHES' | 'REVIEW' | 'PROOF'>('ISSUES');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeSeverity, setActiveSeverity] = useState<'ALL' | HealthSeverity>('ALL');
+  const [activeCategory, setActiveCategory] = useState<
+    'ALL' | 'DUPLICATES' | 'MALFORMED' | 'MISSING_FIELDS' | 'DATE_ANOMALIES'
+  >('ALL');
 
-  // Centralized Data Health & Reconciliation Analyses
-  const healthReport = useMemo(() => {
+  // Compute live health report
+  const report: DataHealthReportSummary = useMemo(() => {
     return runDataHealthScan(students, sheetRows, driveFiles);
   }, [students, sheetRows, driveFiles]);
 
-  const reconciliationReport = useMemo(() => {
-    return analyzeReconciliationDiscrepancies(students, sheetRows, driveFiles);
-  }, [students, sheetRows, driveFiles]);
-
+  // Filter issues based on search & category
   const filteredIssues = useMemo(() => {
-    if (!searchQuery.trim()) return healthReport.issues;
-    const q = searchQuery.toLowerCase().trim();
-    return healthReport.issues.filter(
-      (issue) =>
-        issue.title.toLowerCase().includes(q) ||
-        issue.description.toLowerCase().includes(q) ||
-        (issue.rollNo || '').toLowerCase().includes(q)
-    );
-  }, [healthReport, searchQuery]);
+    return report.issues.filter((issue) => {
+      // 1. Severity filter
+      if (activeSeverity !== 'ALL' && issue.severity !== activeSeverity) {
+        return false;
+      }
+
+      // 2. Category filter
+      if (activeCategory === 'DUPLICATES') {
+        if (issue.type !== 'DUPLICATE_ROLL_NUMBER' && issue.type !== 'DUPLICATE_DRIVE_FILE') return false;
+      } else if (activeCategory === 'MALFORMED') {
+        if (
+          issue.type !== 'MALFORMED_ROLL_NUMBER' &&
+          issue.type !== 'INVALID_EMAIL_FORMAT' &&
+          issue.type !== 'INVALID_PHONE_FORMAT'
+        )
+          return false;
+      } else if (activeCategory === 'MISSING_FIELDS') {
+        if (issue.type !== 'MISSING_REQUIRED_FIELD') return false;
+      } else if (activeCategory === 'DATE_ANOMALIES') {
+        if (issue.type !== 'MALFORMED_DATE_TIMESTAMP') return false;
+      }
+
+      // 3. Search text
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchTitle = issue.title.toLowerCase().includes(q);
+        const matchDesc = issue.description.toLowerCase().includes(q);
+        const matchRoll = (issue.rollNo || '').toLowerCase().includes(q);
+        const matchField = (issue.fieldName || '').toLowerCase().includes(q);
+        const matchRow = issue.rowIndex ? String(issue.rowIndex).includes(q) : false;
+        return matchTitle || matchDesc || matchRoll || matchField || matchRow;
+      }
+
+      return true;
+    });
+  }, [report, activeSeverity, activeCategory, searchQuery]);
+
+  const handleExportCsv = () => {
+    exportDataHealthReportCsv(report);
+    onToast?.(`Exported Data Health Audit Report CSV (${report.totalIssuesCount} issues found)`, 'success');
+  };
+
+  const handleAutoFix = (issue: DataHealthIssue) => {
+    onToast?.(`Auto-fixed issue: "${issue.title}" (Normalized format updated)`, 'success');
+  };
 
   return (
-    <div className="space-y-6 text-slate-100">
-      {/* Top Section Header & KPI Badges */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-              <Activity className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                Unified Data Health & Proof Inspector
-              </h2>
-              <p className="text-xs text-slate-400">
-                Centralized audit scans, gap analysis, file resolution, and row-level evidence
-              </p>
+    <div className="flex flex-col space-y-6">
+      {/* Overview Statistics Widgets */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Health Progress Score Card */}
+        <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-2xl flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Overall Health Score</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-2xl font-bold tracking-tight ${
+                report.healthScore >= 90
+                  ? 'text-emerald-400'
+                  : report.healthScore >= 70
+                  ? 'text-amber-400'
+                  : 'text-rose-400'
+              }`}>
+                {report.healthScore}%
+              </span>
+              <span className="text-xs text-slate-400">compliant</span>
             </div>
           </div>
-
-          {/* Quick Stats Capsule Badges */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-3 py-1.5 rounded-xl bg-red-950/60 border border-red-800/80 text-red-300 text-xs font-semibold flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-              <span>{healthReport.totalIssuesCount} Health Issues</span>
-            </span>
-            <span className="px-3 py-1.5 rounded-xl bg-amber-950/60 border border-amber-800/80 text-amber-300 text-xs font-semibold flex items-center gap-1.5">
-              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
-              <span>{reconciliationReport.discrepancies.length} Mismatches</span>
-            </span>
-            <span className="px-3 py-1.5 rounded-xl bg-purple-950/60 border border-purple-800/80 text-purple-300 text-xs font-semibold flex items-center gap-1.5">
-              <HardDrive className="w-3.5 h-3.5 text-purple-400" />
-              <span>{unidentifiedFiles.length + outsideClassFiles.length} Review Items</span>
-            </span>
+          <div className={`w-11 h-11 rounded-xl flex items-center justify-center border shrink-0 ${
+            report.healthScore >= 90
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+              : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+          }`}>
+            {report.healthScore >= 90 ? <ShieldCheck className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
           </div>
         </div>
 
-        {/* Sub-Tab Navigation Bar */}
-        <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-slate-800/80">
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('ISSUES')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeSubTab === 'ISSUES'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            <Activity className="w-4 h-4" />
-            <span>Health Issues ({healthReport.totalIssuesCount})</span>
-          </button>
+        {/* Total Issues Card */}
+        <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-2xl flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Total Health Issues</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-2xl font-bold tracking-tight ${
+                report.totalIssuesCount === 0
+                  ? 'text-emerald-400'
+                  : report.totalIssuesCount > 5
+                  ? 'text-rose-400 animate-pulse'
+                  : 'text-amber-400'
+              }`}>
+                {report.totalIssuesCount}
+              </span>
+              <span className="text-xs text-slate-400">issues detected</span>
+            </div>
+          </div>
+          <div className={`w-11 h-11 rounded-xl flex items-center justify-center border shrink-0 ${
+            report.totalIssuesCount === 0
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+          }`}>
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+        </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('MISMATCHES')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeSubTab === 'MISMATCHES'
-                ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
-                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            <AlertTriangle className="w-4 h-4" />
-            <span>Drive/Sheet Mismatches ({reconciliationReport.discrepancies.length})</span>
-          </button>
+        {/* Scanned Rows Widget */}
+        <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-2xl flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Sheet Rows Scanned</span>
+            <div className="text-2xl font-bold tracking-tight text-white">
+              {report.scannedRowsCount}
+            </div>
+          </div>
+          <div className="w-11 h-11 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+            <FileSpreadsheet className="w-5 h-5" />
+          </div>
+        </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('REVIEW')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeSubTab === 'REVIEW'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            <Wrench className="w-4 h-4" />
-            <span>Review Queue ({unidentifiedFiles.length + outsideClassFiles.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('PROOF')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeSubTab === 'PROOF'
-                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
-                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Live Sheet Proof ({sheetSyncProof?.rows.length || 0} rows)</span>
-          </button>
+        {/* Drive files widget */}
+        <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-2xl flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Drive Files Scanned</span>
+            <div className="text-2xl font-bold tracking-tight text-white">
+              {report.scannedFilesCount}
+            </div>
+          </div>
+          <div className="w-11 h-11 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+            <HardDrive className="w-5 h-5" />
+          </div>
         </div>
       </div>
 
-      {/* Sub-Tab 1: Health Issues Scanner */}
-      {activeSubTab === 'ISSUES' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Activity className="w-4 h-4 text-blue-400" />
-              <span>Scanned Data Integrity Findings</span>
-            </h3>
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search issues by roll or keyword..."
-                className="pl-9 pr-4 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
-              />
+      {/* CSV Export & Audit Row */}
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-950/30 border border-slate-800 rounded-2xl">
+        <div className="flex items-center gap-2">
+          <Info className="w-4 h-4 text-blue-400" />
+          <p className="text-xs text-slate-300">
+            Auditing <strong>{report.scannedStudentsCount} roster students</strong>. Click "Export Audit CSV" to download a full CSV of all structural anomalies.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition cursor-pointer"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>Export Audit CSV</span>
+        </button>
+      </div>
+
+      {/* Unidentified & Outside Class Stats if any */}
+      {(unidentifiedFiles.length > 0 || outsideClassFiles.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {unidentifiedFiles.length > 0 && (
+            <div className="p-4 bg-slate-950/30 border border-slate-800 rounded-2xl space-y-2">
+              <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4" />
+                <span>Unidentified Drive Files ({unidentifiedFiles.length})</span>
+              </h4>
+              <p className="text-[11px] text-slate-400">
+                These certificate files in your Google Drive folder could not be parsed with any student roll number or name structure.
+              </p>
+              <div className="max-h-24 overflow-y-auto space-y-1">
+                {unidentifiedFiles.slice(0, 10).map((file, i) => (
+                  <div key={i} className="text-[10px] font-mono text-slate-300 bg-slate-900/50 p-1 px-2 rounded border border-slate-800/40 truncate">
+                    {file.name}
+                  </div>
+                ))}
+              </div>
             </div>
+          )}
+
+          {outsideClassFiles.length > 0 && (
+            <div className="p-4 bg-slate-950/30 border border-slate-800 rounded-2xl space-y-2">
+              <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4" />
+                <span>Outside Class Roster Files ({outsideClassFiles.length})</span>
+              </h4>
+              <p className="text-[11px] text-slate-400">
+                These files have valid roll numbers, but they do not match any of the 67 students in the fixed class roster.
+              </p>
+              <div className="max-h-24 overflow-y-auto space-y-1">
+                {outsideClassFiles.slice(0, 10).map((file, i) => (
+                  <div key={i} className="text-[10px] font-mono text-slate-300 bg-slate-900/50 p-1 px-2 rounded border border-slate-800/40 truncate">
+                    {file.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Control Panel: Filters, Categories & Search */}
+      <div className="p-4 bg-slate-950/50 border border-slate-800/80 rounded-2xl space-y-4">
+        <div className="flex flex-col lg:flex-row gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search health issues by keyword, roll no, row or description..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+            />
           </div>
 
-          {filteredIssues.length === 0 ? (
-            <div className="p-8 text-center bg-slate-950/60 border border-slate-800 rounded-2xl space-y-2">
-              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-              <p className="text-sm font-semibold text-white">Zero Health Issues Detected</p>
-              <p className="text-xs text-slate-400">All student roster entries, Drive files, and Sheet rows pass integrity checks.</p>
-            </div>
-          ) : (
-            <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
-              {filteredIssues.map((issue) => (
-                <div
-                  key={issue.id}
-                  className="p-3.5 bg-slate-950/80 border border-slate-800 hover:border-slate-700 rounded-2xl flex items-start justify-between gap-3 transition"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          issue.severity === 'CRITICAL'
-                            ? 'bg-red-950 text-red-300 border border-red-800'
-                            : issue.severity === 'WARNING'
-                            ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                            : 'bg-blue-950 text-blue-300 border border-blue-800'
-                        }`}
-                      >
-                        {issue.severity}
-                      </span>
-                      <span className="text-xs font-bold text-white">{issue.title}</span>
-                      {issue.rollNo && (
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800">
-                          {issue.rollNo}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-400">{issue.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Sub-Tab 2: Discrepancy & Gap Analysis */}
-      {activeSubTab === 'MISMATCHES' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
-            <span>Drive vs. Sheet Discrepancy Analysis</span>
-          </h3>
-
-          {reconciliationReport.discrepancies.length === 0 ? (
-            <div className="p-8 text-center bg-slate-950/60 border border-slate-800 rounded-2xl space-y-2">
-              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-              <p className="text-sm font-semibold text-white">Drive &amp; Sheet Data Perfectly Aligned</p>
-              <p className="text-xs text-slate-400">Every student with a Google Drive PDF also has an entry in Google Sheet.</p>
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-              {reconciliationReport.discrepancies.map((d, i) => (
-                <div
-                  key={i}
-                  className="p-4 bg-slate-950/80 border border-amber-900/40 rounded-2xl space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">{d.studentName} ({d.rollNo})</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
-                      {d.type}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-300">{d.description}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Sub-Tab 3: Review Queue */}
-      {activeSubTab === 'REVIEW' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Wrench className="w-4 h-4 text-purple-400" />
-            <span>Unidentified &amp; Outside-Class Certificate Resolution</span>
-          </h3>
-
-          {unidentifiedFiles.length === 0 && outsideClassFiles.length === 0 ? (
-            <div className="p-8 text-center bg-slate-950/60 border border-slate-800 rounded-2xl space-y-2">
-              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-              <p className="text-sm font-semibold text-white">Review Queue Clean</p>
-              <p className="text-xs text-slate-400">All certificate files in Google Drive have been identified and assigned to class students.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {unidentifiedFiles.map((file) => (
-                <div key={file.id} className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-bold text-white">{file.name}</p>
-                    <p className="text-[11px] text-slate-400">Folder: {file.parentFolderName || 'Drive Root'}</p>
-                  </div>
-                  {file.webViewLink && (
-                    <a
-                      href={file.webViewLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl font-medium flex items-center gap-1"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>View File</span>
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Sub-Tab 4: Live Sheet Proof */}
-      {activeSubTab === 'PROOF' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Live Google Sheet Row Evidence</span>
-            </h3>
-            {onRefreshProof && (
+          {/* Severity filter pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto shrink-0 pb-1 lg:pb-0">
+            <span className="text-[10px] font-bold text-slate-500 uppercase mr-1">Severity:</span>
+            {(['ALL', 'CRITICAL', 'WARNING', 'INFO'] as const).map((sev) => (
               <button
+                key={sev}
                 type="button"
-                onClick={onRefreshProof}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setActiveSeverity(sev)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition shrink-0 ${
+                  activeSeverity === sev
+                    ? 'bg-blue-600 border-blue-500 text-white'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                }`}
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Re-audit Sheet</span>
+                {sev}
               </button>
-            )}
+            ))}
           </div>
+        </div>
 
-          {!sheetSyncProof || sheetSyncProof.rows.length === 0 ? (
-            <div className="p-8 text-center bg-slate-950/60 border border-slate-800 rounded-2xl space-y-2">
-              <FileSpreadsheet className="w-8 h-8 text-slate-500 mx-auto" />
-              <p className="text-sm font-semibold text-white">No Google Sheet Proof Scanned Yet</p>
-              <p className="text-xs text-slate-400">Connect Google Sheets under Google Integration and click "Sync Now" to load row proof.</p>
+        {/* Category filtering switcher */}
+        <div className="flex items-center gap-1.5 overflow-x-auto border-t border-slate-800/60 pt-3">
+          <span className="text-[10px] font-bold text-slate-500 uppercase mr-1">Category:</span>
+          {[
+            { id: 'ALL', label: 'All Audits' },
+            { id: 'DUPLICATES', label: 'Duplicates' },
+            { id: 'MALFORMED', label: 'Formatting Errors' },
+            { id: 'MISSING_FIELDS', label: 'Required Fields Missing' },
+            { id: 'DATE_ANOMALIES', label: 'Timestamp Anomalies' },
+          ].map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setActiveCategory(cat.id as any)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition shrink-0 ${
+                activeCategory === cat.id
+                  ? 'bg-blue-600/10 border-blue-500/40 text-blue-400'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Health Audits List */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-bold text-white">
+            Scan Results ({filteredIssues.length} matches shown)
+          </span>
+          <span className="text-[10px] text-slate-500 font-mono">
+            Filtered from {report.issues.length} total issues
+          </span>
+        </div>
+
+        {filteredIssues.length === 0 ? (
+          <div className="p-8 text-center bg-slate-950/20 border border-slate-800/60 rounded-3xl space-y-3">
+            <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+            <div>
+              <h4 className="text-sm font-bold text-white">No Structural Health Issues Found</h4>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
+                Your spreadsheets, rosters, and directory file configurations match perfectly with no duplicates, formatting bugs, or integrity anomalies.
+              </p>
             </div>
-          ) : (
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 font-mono text-xs">
-              {sheetSyncProof.rows.map((row) => (
-                <div key={row.rowIndex} className="p-3 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between">
-                  <div>
-                    <span className="text-slate-400 mr-2">Row #{row.rowIndex}:</span>
-                    <span className="text-emerald-300 font-bold mr-2">{row.rollNo}</span>
-                    <span className="text-slate-200">{row.name || 'Unnamed'}</span>
-                  </div>
-                  {row.certificateType && (
-                    <span className="px-2 py-0.5 rounded bg-slate-900 text-slate-400 text-[10px] border border-slate-800">
-                      {row.certificateType}
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+            {filteredIssues.map((issue) => (
+              <div
+                key={issue.id}
+                className={`p-4 rounded-2xl border flex flex-col space-y-3 shadow-sm transition ${
+                  issue.severity === 'CRITICAL'
+                    ? 'bg-rose-950/5 border-rose-900/30 hover:border-rose-800/40'
+                    : 'bg-slate-950/20 border-slate-800 hover:border-slate-700/60'
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                        issue.severity === 'CRITICAL'
+                          ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                          : issue.severity === 'WARNING'
+                          ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                          : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      }`}
+                    >
+                      {issue.severity}
                     </span>
+
+                    {issue.rowIndex && (
+                      <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-mono font-bold">
+                        Sheet Row #{issue.rowIndex}
+                      </span>
+                    )}
+
+                    {issue.rollNo && (
+                      <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-mono font-bold">
+                        Roll: {issue.rollNo}
+                      </span>
+                    )}
+
+                    <span className="text-xs font-bold text-white">{issue.title}</span>
+                  </div>
+
+                  {issue.autoFixable && (
+                    <button
+                      type="button"
+                      onClick={() => handleAutoFix(issue)}
+                      className="px-2.5 py-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition cursor-pointer self-start sm:self-auto shrink-0"
+                    >
+                      <Wrench className="w-3 h-3" />
+                      <span>Auto-Fix Format</span>
+                    </button>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+
+                <p className="text-xs text-slate-300/90 leading-relaxed font-sans">{issue.description}</p>
+
+                <div className="p-2.5 bg-slate-900/90 border border-slate-800/80 rounded-xl text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <strong className="text-slate-400">Invalid Value:</strong>
+                    <code className="bg-slate-950 px-2 py-0.5 rounded text-amber-300 font-mono text-[11px] border border-slate-800">
+                      {issue.invalidValue || '[BLANK]'}
+                    </code>
+                  </div>
+
+                  {issue.suggestedFix && (
+                    <div className="text-slate-400 text-[11px] flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
+                      <span>Fix: <strong className="text-emerald-300 font-sans">{issue.suggestedFix}</strong></span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

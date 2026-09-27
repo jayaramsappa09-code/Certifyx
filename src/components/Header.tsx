@@ -116,19 +116,21 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Sync Now Button */}
-          <button
-            onClick={onSyncNow}
-            disabled={isSyncing}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:opacity-70 text-white text-xs sm:text-sm font-semibold rounded-xl transition shadow-md shadow-blue-600/20 cursor-pointer"
-            title="Scan Google Drive folder and match against Google Sheet"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'Syncing...' : 'SYNC NOW'}</span>
-          </button>
+          {/* Sync Now Button - Hidden when offline since APIs won't work */}
+          {isOnline && (
+            <button
+              onClick={onSyncNow}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:opacity-70 text-white text-xs sm:text-sm font-semibold rounded-xl transition shadow-md shadow-blue-600/20 cursor-pointer"
+              title="Scan Google Drive folder and match against Google Sheet"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'SYNC NOW'}</span>
+            </button>
+          )}
 
-          {/* Sheet Proof Inspector Button */}
-          {onOpenSheetProof && (
+          {/* Sheet Proof Inspector Button - Hidden when offline */}
+          {isOnline && onOpenSheetProof && (
             <button
               onClick={onOpenSheetProof}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer"
@@ -139,8 +141,8 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Data Health Report Quick Trigger */}
-          {onOpenDataHealthReport && (
+          {/* Data Health Report Quick Trigger - Hidden when offline */}
+          {isOnline && onOpenDataHealthReport && (
             <button
               type="button"
               onClick={onOpenDataHealthReport}

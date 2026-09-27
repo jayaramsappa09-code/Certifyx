@@ -101,6 +101,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { DocumentationTab } from './components/DocumentationTab';
 import { OnboardingWizardModal } from './components/OnboardingWizardModal';
+import { GapDetailModal } from './components/GapDetailModal';
 import { AccessDeniedScreen } from './components/AccessDeniedScreen';
 import {
   GlobalSyncProgressBar,
@@ -122,7 +123,7 @@ import {
   getLatestStudentActivity,
   DateRangeAnalysisResult,
 } from './utils/dateFilterUtils';
-import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet, Layers } from 'lucide-react';
 
 const recalculateStudentMismatch = (
   s: StudentStatusRecord,
@@ -277,6 +278,7 @@ export default function App() {
   const [pendingFirstSyncResult, setPendingFirstSyncResult] = useState<SyncEngineResult | null>(null);
   const [showSetupWizardModal, setShowSetupWizardModal] = useState(false);
   const [showSheetProofModal, setShowSheetProofModal] = useState(false);
+  const [showGapDetailModal, setShowGapDetailModal] = useState(false);
   const [sheetSyncProof, setSheetSyncProof] = useState<SheetSyncProof | null>(getLastSheetSyncProof());
   const [isRefreshingProof, setIsRefreshingProof] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -2121,57 +2123,8 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
 
         {/* Tab 1: Dashboard & Class Roster */}
         {activeTab === 'dashboard' && (
-          <div className="space-y-6">
-            {/* Sheet Sync Proof Quick Banner */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                  <FileSpreadsheet className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-sm font-bold text-white">Google Sheet Live Proof &amp; Inspector</h4>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      {sheetSyncProof ? `${sheetSyncProof.rows.length} rows scanned` : 'No sheet proof yet'}
-                    </span>
-                    {sheetSyncProof && (
-                      <span className="text-[10px] font-semibold text-slate-400">
-                        ({sheetSyncProof.matchedCount} class matches)
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {sheetSyncProof
-                      ? `Last audited at ${new Date(sheetSyncProof.timestamp).toLocaleTimeString()} • Click to view row-by-row proof, match evidence, and certificate links.`
-                      : 'Connect your Google Sheet under Google Integration and click "Sync Now" to inspect row evidence.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => setShowSheetProofModal(true)}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>View Sheet Proof</span>
-                </button>
-
-                {sheetConfig && (
-                  <button
-                    onClick={handleRefreshLiveSheetProof}
-                    disabled={isRefreshingProof}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 text-slate-300 hover:text-white text-xs font-medium rounded-xl transition cursor-pointer flex items-center gap-1.5"
-                    title="Quickly re-read Google Sheet to fetch newly added rows"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingProof ? 'animate-spin text-blue-400' : ''}`} />
-                    <span>{isRefreshingProof ? 'Refreshing...' : 'Quick Sheet Sync'}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Top Metric Cards */}
+          <div className="space-y-6 animate-fade-in">
+            {/* Top Metric Cards - High Priority */}
             <DashboardStats
               totalStudents={studentStatuses.length || 67}
               certificatesFound={totalCertsFound}
@@ -2196,25 +2149,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               }}
             />
 
-            {/* Date-Range Filter Bar & Submission Velocity Analytics */}
-            <DateRangeFilterBar
-              students={studentStatuses}
-              config={dateFilterConfig}
-              onChangeConfig={setDateFilterConfig}
-              onExportPeriodCsv={handleExportPeriodCsv}
-            />
-
-            {/* Status Distribution Recharts Bar Chart */}
-            <StatusDistributionChart
-              totalStudents={studentStatuses.length || 67}
-              completedCount={completedCount}
-              pendingCount={pendingCount}
-              notStartedCount={notStartedCount}
-              activeFilter={activeFilter}
-              onSelectFilter={setActiveFilter}
-            />
-
-            {/* Student Table with Integrated Data Mismatch Section */}
+            {/* Student Table Review Work Area - Primary Focal Point */}
             <ErrorBoundary sectionName="Student Roster & Matrix">
               <StudentTable
                 students={studentStatuses}
@@ -2257,6 +2192,86 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                 onToast={showToast}
               />
             </ErrorBoundary>
+
+            {/* Collapsible Secondary Analytics Row & Filters */}
+            <details className="bg-slate-900/60 border border-slate-800 rounded-3xl p-4 shadow-md group transition-all">
+              <summary className="text-xs font-bold text-slate-400 group-hover:text-white cursor-pointer list-none flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                  Advanced Analytics, Trends & Date Range Filtering
+                </span>
+                <span className="text-[10px] text-blue-400 font-semibold group-open:hidden">Show Analytics &amp; Charts</span>
+                <span className="text-[10px] text-slate-500 font-semibold hidden group-open:inline">Hide Analytics</span>
+              </summary>
+              <div className="mt-4 space-y-4 animate-fade-in-up">
+                {/* Date-Range Filter Bar & Submission Velocity Analytics */}
+                <DateRangeFilterBar
+                  students={studentStatuses}
+                  config={dateFilterConfig}
+                  onChangeConfig={setDateFilterConfig}
+                  onExportPeriodCsv={handleExportPeriodCsv}
+                />
+
+                {/* Status Distribution Recharts Bar Chart */}
+                <StatusDistributionChart
+                  totalStudents={studentStatuses.length || 67}
+                  completedCount={completedCount}
+                  pendingCount={pendingCount}
+                  notStartedCount={notStartedCount}
+                  activeFilter={activeFilter}
+                  onSelectFilter={setActiveFilter}
+                />
+              </div>
+            </details>
+
+            {/* Sheet Sync Proof Quick Banner - Collateral Audit Inspector */}
+            <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-bold text-white">Google Sheet Live Proof &amp; Inspector</h4>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      {sheetSyncProof ? `${sheetSyncProof.rows.length} rows scanned` : 'No sheet proof yet'}
+                    </span>
+                    {sheetSyncProof && (
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        ({sheetSyncProof.matchedCount} class matches)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {sheetSyncProof
+                      ? `Last audited at ${new Date(sheetSyncProof.timestamp).toLocaleTimeString()} • Click to view row-by-row proof, match evidence, and certificate links.`
+                      : 'Connect your Google Sheet under Google Integration and click "Sync Now" to inspect row evidence.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setShowGapDetailModal(true)}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-indigo-600/20 animate-pulse"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>View Gap Detail</span>
+                </button>
+
+                {sheetConfig && isOnline && (
+                  <button
+                    onClick={handleRefreshLiveSheetProof}
+                    disabled={isRefreshingProof}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 text-slate-300 hover:text-white text-xs font-medium rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                    title="Quickly re-read Google Sheet to fetch newly added rows"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingProof ? 'animate-spin text-blue-400' : ''}`} />
+                    <span>{isRefreshingProof ? 'Refreshing...' : 'Quick Sheet Sync'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -2297,7 +2312,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               }}
               onConnectGoogle={handleGoogleLogin}
               onOpenConnectOptions={() => handleGoogleLogin(true)}
-              onOpenSheetProof={() => setShowSheetProofModal(true)}
+              onOpenSheetProof={() => setShowGapDetailModal(true)}
               onDisconnectGoogle={handleGoogleLogout}
               onTriggerSync={handleSyncNow}
             />
@@ -2340,6 +2355,30 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
             setTargetStudentForReminder(student);
             setShowEmailReminderModal(true);
           }}
+        />
+      )}
+
+      {/* Gap Detail Auditor Modal */}
+      {showGapDetailModal && (
+        <GapDetailModal
+          isOpen={showGapDetailModal}
+          onClose={() => setShowGapDetailModal(false)}
+          students={studentStatuses}
+          sheetRows={sheetSyncProof?.rows || []}
+          driveFiles={Array.from(
+            new Map(
+              [
+                ...studentStatuses.flatMap((s) => s.driveFiles || []),
+                ...unidentifiedFiles,
+                ...outsideClassFiles,
+                ...duplicateFiles,
+              ]
+                .filter(Boolean)
+                .map((f) => [f.id || f.name, f])
+            ).values()
+          )}
+          onRefreshLiveProof={handleRefreshLiveSheetProof}
+          isRefreshing={isRefreshingProof}
         />
       )}
 
