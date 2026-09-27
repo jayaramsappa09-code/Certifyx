@@ -19,6 +19,7 @@ import {
 import { AuthUser } from '../types';
 import { ConnectivityStatusIndicator } from './ConnectivityStatusIndicator';
 import { ThemeToggleSwitch } from './ThemeToggleSwitch';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   user: AuthUser | null;
@@ -159,6 +160,9 @@ export const Header: React.FC<HeaderProps> = ({
               showLabels={true}
             />
           )}
+
+          {/* In-App PWA Install Trigger */}
+          <PWAInstallButton />
 
           {/* Google Auth Status / Profile */}
           {user ? (

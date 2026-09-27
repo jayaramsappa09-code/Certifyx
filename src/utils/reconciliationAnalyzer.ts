@@ -183,6 +183,46 @@ export function generateReconciliationAnalysis(
 }
 
 /**
+ * Simplified discrepancy analysis helper for Data Health views
+ */
+export function analyzeReconciliationDiscrepancies(
+  students: StudentStatusRecord[],
+  sheetRows: SheetRowRecord[] = [],
+  driveFiles: DriveCertificateFile[] = []
+) {
+  const analysis = generateReconciliationAnalysis(students, sheetRows, driveFiles);
+  return {
+    analysis,
+    discrepancies: [
+      ...analysis.rosterMissingInSheet.map((s) => ({
+        studentName: s.name,
+        rollNo: s.rollNo,
+        type: 'MISSING IN SHEET',
+        description: `Student exists in roster but has no entries in Google Sheet. Drive files: ${s.driveFilesCount}.`,
+      })),
+      ...analysis.driveMissingInSheet.map((d) => ({
+        studentName: d.name,
+        rollNo: d.rollNo,
+        type: 'MISSING IN SHEET',
+        description: `Student has ${d.fileCount} certificate file(s) in Drive but no response in Google Sheet.`,
+      })),
+      ...analysis.sheetMissingInDrive.map((s) => ({
+        studentName: s.name,
+        rollNo: s.rollNo,
+        type: 'MISSING IN DRIVE',
+        description: `Student has response in Google Sheet but no PDF file in Google Drive.`,
+      })),
+      ...analysis.quantityMismatches.map((q) => ({
+        studentName: q.name,
+        rollNo: q.rollNo,
+        type: q.type,
+        description: q.description,
+      })),
+    ],
+  };
+}
+
+/**
  * Exports detailed Data Mismatch Reconciliation Report to CSV
  */
 export function exportDataMismatchCsv(analysis: ReconciliationAnalysis) {

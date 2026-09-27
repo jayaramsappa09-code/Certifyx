@@ -98,6 +98,7 @@ import { GoogleIntegrationTab } from './components/GoogleIntegrationTab';
 import { SyncHistoryTab } from './components/SyncHistoryTab';
 import { AuditLogTab } from './components/AuditLogTab';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { DocumentationTab } from './components/DocumentationTab';
 import { SyncReportModal } from './components/SyncReportModal';
 import { FirstSyncPreviewModal } from './components/FirstSyncPreviewModal';
@@ -2474,6 +2475,9 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
       <footer className="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-600">
         <p>Class Certificate Automation Manager • Fixed 67-Student Class Roster • Google Drive & Google Sheets Primary Sources</p>
       </footer>
+
+      {/* Floating Offline Status Banner */}
+      <OfflineIndicator />
     </div>
   );
 }

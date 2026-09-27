@@ -2,14 +2,13 @@ import { WhatsAppApiConfig, StudentStatusRecord } from '../types';
 
 export interface WhatsAppSendResult {
   success: boolean;
-  mode: 'TWILIO' | 'META' | 'WEBHOOK' | 'DEEPLINK';
-  messageId?: string;
-  error?: string;
+  mode: 'DEEPLINK';
   deeplinkUrl?: string;
+  error?: string;
 }
 
 /**
- * Format raw phone input into a clean E.164 string for WhatsApp API (e.g., +919876543210 or 919876543210)
+ * Format raw phone input into a clean E.164 string for WhatsApp API (e.g., 919876543210)
  */
 export function normalizePhoneNumber(rawPhone?: string): string {
   if (!rawPhone) return '';
@@ -23,16 +22,16 @@ export function normalizePhoneNumber(rawPhone?: string): string {
 }
 
 /**
- * Send an individual WhatsApp notice via Twilio API, Meta WhatsApp Cloud API, Webhook, or WhatsApp Web link fallback.
+ * Send an individual WhatsApp notice via direct WhatsApp Web / App deeplink (wa.me)
  */
 export async function sendWhatsAppNotice(
   phone: string,
   message: string,
-  config?: WhatsAppApiConfig
+  _config?: WhatsAppApiConfig
 ): Promise<WhatsAppSendResult> {
   const cleanPhone = normalizePhoneNumber(phone);
 
-  if (!cleanPhone && config?.provider !== 'CUSTOM_WEBHOOK') {
+  if (!cleanPhone) {
     return {
       success: false,
       mode: 'DEEPLINK',
@@ -40,145 +39,8 @@ export async function sendWhatsAppNotice(
     };
   }
 
-  // 1. TWILIO WHATSAPP API
-  if (
-    config?.provider === 'TWILIO' &&
-    config.twilioAccountSid &&
-    config.twilioAuthToken
-  ) {
-    try {
-      const accountSid = config.twilioAccountSid.trim();
-      const authToken = config.twilioAuthToken.trim();
-      const fromNumber = config.twilioWhatsAppFrom?.trim() || 'whatsapp:+14155238886';
-      const toNumber = cleanPhone.startsWith('+') ? `whatsapp:${cleanPhone}` : `whatsapp:+${cleanPhone}`;
-
-      const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-      const formData = new URLSearchParams();
-      formData.append('From', fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`);
-      formData.append('To', toNumber);
-      formData.append('Body', message);
-
-      const response = await fetch(twilioUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + btoa(`${accountSid}:${authToken}`),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString(),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.sid) {
-        return {
-          success: true,
-          mode: 'TWILIO',
-          messageId: data.sid,
-        };
-      } else {
-        return {
-          success: false,
-          mode: 'TWILIO',
-          error: data.message || data.detail || 'Twilio WhatsApp API dispatch failed',
-        };
-      }
-    } catch (err: any) {
-      return {
-        success: false,
-        mode: 'TWILIO',
-        error: err.message || 'Twilio network request failed',
-      };
-    }
-  }
-
-  // 2. META WHATSAPP CLOUD API
-  if (
-    config?.provider === 'META_CLOUD_API' &&
-    config.metaPhoneNumberId &&
-    config.metaAccessToken
-  ) {
-    try {
-      const phoneNumberId = config.metaPhoneNumberId.trim();
-      const accessToken = config.metaAccessToken.trim();
-      const metaUrl = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
-
-      const response = await fetch(metaUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: cleanPhone,
-          type: 'text',
-          text: { body: message },
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.messages?.[0]?.id) {
-        return {
-          success: true,
-          mode: 'META',
-          messageId: data.messages[0].id,
-        };
-      } else {
-        return {
-          success: false,
-          mode: 'META',
-          error: data.error?.message || 'Meta WhatsApp Cloud API dispatch failed',
-        };
-      }
-    } catch (err: any) {
-      return {
-        success: false,
-        mode: 'META',
-        error: err.message || 'Meta API network request failed',
-      };
-    }
-  }
-
-  // 3. CUSTOM WEBHOOK API
-  if (config?.provider === 'CUSTOM_WEBHOOK' && config.webhookUrl) {
-    try {
-      const response = await fetch(config.webhookUrl.trim(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'WHATSAPP_NOTICE_DISPATCH',
-          timestamp: new Date().toISOString(),
-          phone: cleanPhone,
-          message: message,
-        }),
-      });
-
-      if (response.ok) {
-        return {
-          success: true,
-          mode: 'WEBHOOK',
-        };
-      } else {
-        return {
-          success: false,
-          mode: 'WEBHOOK',
-          error: `Webhook returned status ${response.status}`,
-        };
-      }
-    } catch (err: any) {
-      return {
-        success: false,
-        mode: 'WEBHOOK',
-        error: err.message || 'Webhook request failed',
-      };
-    }
-  }
-
-  // 4. FALLBACK TO DIRECT WHATSAPP DEEPLINK (WhatsApp Web / App)
-  const deeplinkUrl = cleanPhone
-    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`
-    : `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+  const encodedText = encodeURIComponent(message);
+  const deeplinkUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`;
 
   return {
     success: true,

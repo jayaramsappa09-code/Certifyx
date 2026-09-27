@@ -26,7 +26,6 @@ import {
 import { StudentStatusRecord, DriveCertificateFile } from '../types';
 import { CertificateThumbnail } from './ManualReviewQueue';
 import { getStudentActivityEvents } from '../utils/dateFilterUtils';
-import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 import {
   uploadCertificateFileToSupabase,
   listUploadedCertificatesForStudent,
@@ -324,9 +323,6 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               </button>
             </div>
           </div>
-
-          {/* Real Discrepancy & Proof Evidence Section */}
-          <DiscrepancyProofCard student={student} onOpenEmailReminder={onOpenEmailReminder} />
 
           {/* Unified Certificate Tracker Section */}
           <div className="space-y-3">

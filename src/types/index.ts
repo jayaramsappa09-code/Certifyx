@@ -241,13 +241,7 @@ export interface AutoEmailSchedulerConfig {
 }
 
 export interface WhatsAppApiConfig {
-  provider: 'TWILIO' | 'META_CLOUD_API' | 'CUSTOM_WEBHOOK' | 'DIRECT_WA_LINK';
-  twilioAccountSid?: string;
-  twilioAuthToken?: string;
-  twilioWhatsAppFrom?: string; // e.g. whatsapp:+14155238886
-  metaAccessToken?: string;
-  metaPhoneNumberId?: string;
-  webhookUrl?: string;
+  provider: 'DIRECT_WA_LINK';
 }
 
 export interface AppSettings {
