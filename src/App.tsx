@@ -100,12 +100,12 @@ import { AuditLogTab } from './components/AuditLogTab';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { DocumentationTab } from './components/DocumentationTab';
-import { SyncReportModal } from './components/SyncReportModal';
-import { FirstSyncPreviewModal } from './components/FirstSyncPreviewModal';
-import { SetupWizardModal } from './components/SetupWizardModal';
+import { SyncReportModal } from './components/SyncHistoryReportModal';
+import { FirstSyncPreviewModal } from './components/InitialSyncPreviewModal';
+import { SetupWizardModal } from './components/AppSetupWizardModal';
 import { AccessDeniedScreen } from './components/AccessDeniedScreen';
-import { GoogleConnectModal } from './components/GoogleConnectModal';
-import { SheetSyncProofModal } from './components/SheetSyncProofModal';
+import { GoogleConnectModal } from './components/GoogleAccountConnectModal';
+import { SheetSyncProofModal } from './components/GoogleSheetSyncProofModal';
 import {
   GlobalSyncProgressBar,
   SyncProgressState,
