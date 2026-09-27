@@ -1,34 +1,70 @@
 -- ==============================================================================
--- Class Certificate Automation Manager - Supabase SQL Schema & RLS Policies
+-- CCAM Database Schema Setup for Supabase (Full Schema with 67-Student Seed)
+-- Copy and run this in your Supabase SQL Editor:
+-- https://supabase.com/dashboard/project/_/sql
 -- ==============================================================================
 
--- 1. EXTENSIONS
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 2. TABLE: admins
--- Authorized administrator emails
-CREATE TABLE IF NOT EXISTS public.admins (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email TEXT UNIQUE NOT NULL,
-    role TEXT NOT NULL DEFAULT 'admin',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+-- 1. Create class_roster table (stores student roster metadata and numbers)
+CREATE TABLE IF NOT EXISTS public.class_roster (
+  roll_no TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  is_active BOOLEAN DEFAULT true,
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Seed initial administrator
-INSERT INTO public.admins (email, role)
-VALUES ('jayaramsappa09@gmail.com', 'super_admin')
-ON CONFLICT (email) DO NOTHING;
+-- 2. Create student_statuses table (stores live sync, submission and audit status)
+CREATE TABLE IF NOT EXISTS public.student_statuses (
+  roll_no TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  drive_uploaded BOOLEAN DEFAULT false,
+  sheet_updated BOOLEAN DEFAULT false,
+  submitted BOOLEAN DEFAULT false,
+  overall_status TEXT DEFAULT 'NOT STARTED',
+  updated_by TEXT DEFAULT 'admin',
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 
--- 3. TABLE: students (Fixed 67-Student Class Roster)
+-- Backward-compatibility views / aliases if needed
 CREATE TABLE IF NOT EXISTS public.students (
-    roll_no TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+  roll_no TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Seed exact 67-student roster
-INSERT INTO public.students (roll_no, name) VALUES
+CREATE TABLE IF NOT EXISTS public.student_status (
+  roll_no TEXT PRIMARY KEY,
+  drive_uploaded BOOLEAN DEFAULT false,
+  sheet_updated BOOLEAN DEFAULT false,
+  submitted BOOLEAN DEFAULT false,
+  overall_status TEXT DEFAULT 'NOT STARTED',
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. Create sync_history table
+CREATE TABLE IF NOT EXISTS public.sync_history (
+  id TEXT PRIMARY KEY,
+  timestamp TIMESTAMPTZ DEFAULT now(),
+  duration_ms INTEGER DEFAULT 0,
+  students_checked INTEGER DEFAULT 67,
+  matched_certificates INTEGER DEFAULT 0,
+  errors INTEGER DEFAULT 0,
+  error_messages TEXT[]
+);
+
+-- 4. Create audit_logs table
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id TEXT PRIMARY KEY,
+  timestamp TIMESTAMPTZ DEFAULT now(),
+  action TEXT NOT NULL,
+  user_email TEXT,
+  details TEXT,
+  category TEXT
+);
+
+-- 5. Seed exact 67-student roster and roll numbers into class_roster and student_statuses
+INSERT INTO public.class_roster (roll_no, name) VALUES
 ('25A31A05DV', 'ADABALA NAVYA RAMYA SREE'),
 ('25A31A05DW', 'BEVARA PRASANTHI'),
 ('25A31A05DX', 'CHILLA DEEPTHI'),
@@ -95,175 +131,53 @@ INSERT INTO public.students (roll_no, name) VALUES
 ('25A31A05GG', 'VANAMALI SIVA NAGA SATYA NARASIMHA'),
 ('25A31A05GH', 'VASAMSETTI PRUDHVI'),
 ('25A31A05GI', 'YALLA ARYA')
-ON CONFLICT (roll_no) DO UPDATE SET name = EXCLUDED.name;
+ON CONFLICT (roll_no) DO UPDATE SET name = EXCLUDED.name, updated_at = now();
 
--- 4. TABLE: student_status
--- Preserves submitted status persistently across syncs and browser restarts
-CREATE TABLE IF NOT EXISTS public.student_status (
-    roll_no TEXT PRIMARY KEY REFERENCES public.students(roll_no) ON DELETE CASCADE,
-    drive_uploaded BOOLEAN NOT NULL DEFAULT FALSE,
-    sheet_updated BOOLEAN NOT NULL DEFAULT FALSE,
-    submitted BOOLEAN NOT NULL DEFAULT FALSE, -- MANUAL ADMIN CONTROL
-    overall_status TEXT NOT NULL DEFAULT 'NOT STARTED', -- 'COMPLETED' | 'PENDING' | 'NOT STARTED'
-    certificates TEXT[] DEFAULT '{}',
-    last_synced_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Seed initial status rows for all 67 students
-INSERT INTO public.student_status (roll_no, submitted, drive_uploaded, sheet_updated, overall_status)
-SELECT roll_no, FALSE, FALSE, FALSE, 'NOT STARTED'
-FROM public.students
+INSERT INTO public.student_statuses (roll_no, name, submitted, drive_uploaded, sheet_updated, overall_status)
+SELECT roll_no, name, false, false, false, 'NOT STARTED'
+FROM public.class_roster
 ON CONFLICT (roll_no) DO NOTHING;
 
--- 5. TABLE: certificates_cache (Cached metadata from Google Drive)
-CREATE TABLE IF NOT EXISTS public.certificates_cache (
-    id TEXT PRIMARY KEY, -- Google Drive file ID
-    file_name TEXT NOT NULL,
-    mime_type TEXT,
-    web_view_link TEXT,
-    detected_roll_no TEXT,
-    detected_cert_type TEXT,
-    is_outside_class BOOLEAN DEFAULT FALSE,
-    is_unidentified BOOLEAN DEFAULT FALSE,
-    is_duplicate BOOLEAN DEFAULT FALSE,
-    created_time TIMESTAMPTZ,
-    synced_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 6. TABLE: sync_history
-CREATE TABLE IF NOT EXISTS public.sync_history (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    timestamp TIMESTAMPTZ DEFAULT NOW(),
-    students_checked INTEGER NOT NULL DEFAULT 67,
-    drive_files_scanned INTEGER NOT NULL DEFAULT 0,
-    matched_certificates INTEGER NOT NULL DEFAULT 0,
-    students_with_certificates INTEGER NOT NULL DEFAULT 0,
-    spreadsheet_records_checked INTEGER NOT NULL DEFAULT 0,
-    spreadsheet_matches INTEGER NOT NULL DEFAULT 0,
-    outside_class_ignored INTEGER NOT NULL DEFAULT 0,
-    unidentified_files INTEGER NOT NULL DEFAULT 0,
-    errors INTEGER NOT NULL DEFAULT 0,
-    duration_ms INTEGER NOT NULL DEFAULT 0
-);
-
--- 7. TABLE: audit_logs
-CREATE TABLE IF NOT EXISTS public.audit_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    timestamp TIMESTAMPTZ DEFAULT NOW(),
-    action TEXT NOT NULL,
-    "user" TEXT NOT NULL,
-    details TEXT,
-    category TEXT NOT NULL DEFAULT 'SYNC'
-);
-
--- 8. TABLE: settings
-CREATE TABLE IF NOT EXISTS public.settings (
-    key TEXT PRIMARY KEY,
-    value JSONB NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Seed default settings
-INSERT INTO public.settings (key, value) VALUES
-('drive_config', '{"folderId": "", "folderName": ""}'::jsonb),
-('sheet_config', '{"spreadsheetId": "", "sheetName": ""}'::jsonb),
-('app_preferences', '{"autoSyncIntervalMinutes": 0, "enableSpreadsheetWrite": false}'::jsonb)
-ON CONFLICT (key) DO NOTHING;
-
--- ==============================================================================
--- ROW LEVEL SECURITY (RLS) POLICIES
--- Only authenticated users present in the admins table have access.
--- ==============================================================================
-
-ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
+-- 6. Enable Row Level Security (RLS)
+ALTER TABLE public.class_roster ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_statuses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_status ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.certificates_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sync_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
--- Helper security function: Check if current auth user is in admins table
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN AS $$
+-- 7. Configure Permissive RLS Policies for Anon & Authenticated Access
+DROP POLICY IF EXISTS "Public access on class_roster" ON public.class_roster;
+CREATE POLICY "Public access on class_roster" ON public.class_roster FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public access on student_statuses" ON public.student_statuses;
+CREATE POLICY "Public access on student_statuses" ON public.student_statuses FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public access on students" ON public.students;
+CREATE POLICY "Public access on students" ON public.students FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public access on student_status" ON public.student_status;
+CREATE POLICY "Public access on student_status" ON public.student_status FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public access on sync_history" ON public.sync_history;
+CREATE POLICY "Public access on sync_history" ON public.sync_history FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public access on audit_logs" ON public.audit_logs;
+CREATE POLICY "Public access on audit_logs" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- 8. Enable Realtime Publications for live cross-admin syncing
+DO $$
 BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM public.admins
-    WHERE email = auth.jwt() ->> 'email'
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Policies for admins
-CREATE POLICY "Admins can view and manage admin list"
-ON public.admins FOR ALL
-USING (public.is_admin());
-
--- Policies for students
-CREATE POLICY "Admins can read students roster"
-ON public.students FOR SELECT
-USING (public.is_admin());
-
--- Policies for student_status
-CREATE POLICY "Admins can manage student_status"
-ON public.student_status FOR ALL
-USING (public.is_admin());
-
--- Policies for certificates_cache
-CREATE POLICY "Admins can manage certificates_cache"
-ON public.certificates_cache FOR ALL
-USING (public.is_admin());
-
--- Policies for sync_history
-CREATE POLICY "Admins can view and append sync_history"
-ON public.sync_history FOR ALL
-USING (public.is_admin());
-
--- Policies for audit_logs
-CREATE POLICY "Admins can view and append audit_logs"
-ON public.audit_logs FOR ALL
-USING (public.is_admin());
-
--- Policies for settings
-CREATE POLICY "Admins can manage settings"
-ON public.settings FOR ALL
-USING (public.is_admin());
-
--- ==============================================================================
--- 9. SUPABASE STORAGE BUCKET SETUP: student-certificates
--- ==============================================================================
-
--- Create the bucket if it does not exist
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('student-certificates', 'student-certificates', TRUE, 10485760, ARRAY['application/pdf', 'image/jpeg', 'image/png'])
-ON CONFLICT (id) DO NOTHING;
-
--- Storage Security Policies for the bucket
-CREATE POLICY "Admins can upload files to student-certificates bucket"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (
-    bucket_id = 'student-certificates' AND
-    (SELECT public.is_admin())
-);
-
-CREATE POLICY "Admins can update files in student-certificates bucket"
-ON storage.objects FOR UPDATE
-TO authenticated
-USING (
-    bucket_id = 'student-certificates' AND
-    (SELECT public.is_admin())
-);
-
-CREATE POLICY "Admins can delete files from student-certificates bucket"
-ON storage.objects FOR DELETE
-TO authenticated
-USING (
-    bucket_id = 'student-certificates' AND
-    (SELECT public.is_admin())
-);
-
-CREATE POLICY "Anyone can view files in student-certificates bucket"
-ON storage.objects FOR SELECT
-USING (bucket_id = 'student-certificates');
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'student_statuses'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.student_statuses;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'class_roster'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.class_roster;
+  END IF;
+END $$;

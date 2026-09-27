@@ -14,8 +14,12 @@ import {
 import {
   getSavedDriveConfig,
   saveDriveConfig,
+  getSavedDriveConfigs,
+  saveDriveConfigs,
   getSavedSheetConfig,
   saveSheetConfig,
+  getSavedSheetConfigs,
+  saveSheetConfigs,
   getAppSettings,
   saveAppSettings,
   getSyncHistory,
@@ -53,6 +57,8 @@ import {
   broadcastStudentStatusUpdate,
   fetchStudentStatusesFromSupabase,
   saveStudentStatusesToSupabase,
+  saveClassRosterToSupabase,
+  pushFullDatabaseToSupabase,
   flushPendingStudentStatusBroadcasts,
   deleteStudentStatusFromSupabase,
 } from './services/supabaseClient';
@@ -184,6 +190,8 @@ export default function App() {
 
   // App settings & persistence
   const [settings, setSettings] = useState<AppSettings>(getAppSettings());
+  const [driveConfigs, setDriveConfigs] = useState<GoogleDriveFolderConfig[]>(getSavedDriveConfigs());
+  const [sheetConfigs, setSheetConfigs] = useState<GoogleSheetConfig[]>(getSavedSheetConfigs());
   const [driveConfig, setDriveConfig] = useState<GoogleDriveFolderConfig | null>(getSavedDriveConfig());
   const [sheetConfig, setSheetConfig] = useState<GoogleSheetConfig | null>(getSavedSheetConfig());
 
@@ -295,7 +303,13 @@ export default function App() {
     setSyncHistory(getSyncHistory());
     setAuditLogs(getAuditLogs());
 
-    // Batch upsert synchronized results to Supabase for real-time sharing
+    // Batch upsert synchronized results & roster numbers to Supabase for real-time sharing
+    saveClassRosterToSupabase(
+      result.studentStatuses.map((s) => ({
+        rollNo: s.rollNo,
+        name: s.name,
+      }))
+    );
     saveStudentStatusesToSupabase(
       result.studentStatuses.map((s) => ({
         rollNo: s.rollNo,
@@ -709,8 +723,11 @@ export default function App() {
     }
 
     // Check if at least one source is configured
-    if (!driveConfig && !sheetConfig) {
-      showToast('Please select a Google Drive folder or Google Sheet in Google Integration settings.', 'info');
+    const activeDriveConfigs = (driveConfigs && driveConfigs.length > 0 ? driveConfigs : (driveConfig ? [driveConfig] : [])).filter((c) => c && c.folderId);
+    const activeSheetConfigs = (sheetConfigs && sheetConfigs.length > 0 ? sheetConfigs : (sheetConfig ? [sheetConfig] : [])).filter((c) => c && c.spreadsheetId);
+
+    if (activeDriveConfigs.length === 0 && activeSheetConfigs.length === 0) {
+      showToast('Please select at least one Google Drive folder or Google Sheet in Google Integration settings.', 'info');
       setActiveTab('integration');
       return;
     }
@@ -732,7 +749,7 @@ export default function App() {
         shortName: 'Drive',
         status: 'PENDING',
         progressPercent: 0,
-        detail: driveConfig ? `Folder: ${driveConfig.folderName}` : 'Awaiting start',
+        detail: activeDriveConfigs.length > 0 ? `${activeDriveConfigs.length} folder(s) queued` : 'Awaiting start',
       },
       SHEET: {
         id: 'SHEET',
@@ -740,7 +757,7 @@ export default function App() {
         shortName: 'Sheet',
         status: 'PENDING',
         progressPercent: 0,
-        detail: sheetConfig ? `Sheet: ${sheetConfig.sheetName}` : 'Awaiting start',
+        detail: activeSheetConfigs.length > 0 ? `${activeSheetConfigs.length} sheet(s) queued` : 'Awaiting start',
       },
       ENGINE: {
         id: 'ENGINE',
@@ -801,189 +818,222 @@ export default function App() {
       let fetchedSheetRows: SheetRowRecord[] = [];
       const errorMessages: string[] = [];
 
-      // 2. Read Google Drive
-      if (driveConfig?.folderId) {
-        try {
-          detailedSteps.DRIVE.status = 'RUNNING';
-          detailedSteps.DRIVE.progressPercent = 15;
-          detailedSteps.DRIVE.startTime = Date.now();
-          emitSyncProgress(
-            'DRIVE',
-            2,
-            28,
-            `Step 2/4: Scanning Drive folder '${driveConfig.folderName || 'Root'}'...`,
-            driveConfig.folderName || 'Drive Folder'
-          );
+      // 2 & 3: Run Drive Scanning and Sheet Reading SIMULTANEOUSLY IN PARALLEL!
+      if (activeDriveConfigs.length > 0) {
+        detailedSteps.DRIVE.status = 'RUNNING';
+        detailedSteps.DRIVE.progressPercent = 20;
+        detailedSteps.DRIVE.startTime = Date.now();
+        detailedSteps.DRIVE.detail = `Scanning ${activeDriveConfigs.length} folder(s) simultaneously...`;
+      } else {
+        detailedSteps.DRIVE.status = 'SKIPPED';
+        detailedSteps.DRIVE.detail = 'No Drive folders configured';
+      }
 
-          fetchedDriveFiles = await listCertificateFilesInFolder(
-            driveConfig.folderId,
-            currentToken,
-            (prog) => {
-              detailedSteps.DRIVE.itemsProcessed = prog.filesFound;
-              detailedSteps.DRIVE.progressPercent = Math.min(95, 20 + prog.page * 20);
-              detailedSteps.DRIVE.detail = `Discovered ${prog.filesFound} files in '${prog.currentFolder}' (Batch ${prog.page})`;
-              const drivePct = Math.min(48, 25 + prog.page * 7);
-              emitSyncProgress(
-                'DRIVE',
-                2,
-                drivePct,
-                `Step 2/4: Scanning '${prog.currentFolder}'...`,
-                `${prog.filesFound} files discovered`,
-                {
-                  currentBatch: prog.page,
-                  totalBatches: prog.page + 1,
-                  batchPercent: Math.min(95, 30 + prog.page * 20),
-                  description: `Scanning '${prog.currentFolder}' • Batch ${prog.page} (${prog.filesFound} files)`,
+      if (activeSheetConfigs.length > 0) {
+        detailedSteps.SHEET.status = 'RUNNING';
+        detailedSteps.SHEET.progressPercent = 20;
+        detailedSteps.SHEET.startTime = Date.now();
+        detailedSteps.SHEET.detail = `Reading ${activeSheetConfigs.length} sheet(s) simultaneously...`;
+      } else {
+        detailedSteps.SHEET.status = 'SKIPPED';
+        detailedSteps.SHEET.detail = 'No Sheets configured';
+      }
+
+      emitSyncProgress(
+        'DRIVE',
+        2,
+        35,
+        `Step 2 & 3/4: Scanning ${activeDriveConfigs.length} Drive folders and ${activeSheetConfigs.length} Google Sheets in parallel...`,
+        'Concurrent multi-source extraction active',
+        {
+          currentBatch: 1,
+          totalBatches: 1,
+          batchPercent: 50,
+          description: `Extracting ${activeDriveConfigs.length} Drive folders & ${activeSheetConfigs.length} Sheets simultaneously in parallel`,
+        }
+      );
+
+      // Execute Drive scan and Sheet read concurrently in parallel
+      const [driveScanResult, sheetScanResult] = await Promise.all([
+        // --- PARALLEL DRIVE SCAN ---
+        (async () => {
+          if (activeDriveConfigs.length === 0) return { files: [], configs: [] };
+
+          let cumulativeDiscovered = 0;
+          const folderPromises = activeDriveConfigs.map(async (cfg, i) => {
+            try {
+              const files = await listCertificateFilesInFolder(
+                cfg.folderId,
+                currentToken,
+                (prog) => {
+                  cumulativeDiscovered += prog.filesFound;
+                  detailedSteps.DRIVE.itemsProcessed = cumulativeDiscovered;
+                  detailedSteps.DRIVE.progressPercent = Math.min(95, 30 + Math.round((cumulativeDiscovered / Math.max(1, FIXED_CLASS_ROSTER.length)) * 50));
+                  detailedSteps.DRIVE.detail = `Scanning ${activeDriveConfigs.length} folders in parallel (${cumulativeDiscovered} files discovered)`;
+                  emitSyncProgress(
+                    'DRIVE',
+                    2,
+                    45,
+                    `Scanning ${activeDriveConfigs.length} Drive folders simultaneously (${cumulativeDiscovered} files discovered)...`,
+                    `${cumulativeDiscovered} files`
+                  );
                 }
               );
+              return {
+                success: true,
+                files,
+                config: {
+                  ...cfg,
+                  fileCount: files.length,
+                  lastSynced: new Date().toISOString(),
+                },
+              };
+            } catch (err: any) {
+              console.error(`Drive fetch error for "${cfg.folderName}":`, err);
+              errorMessages.push(`Drive (${cfg.folderName}): ${err.message}`);
+              if (isAuthExpiredError(err)) {
+                handleTokenExpiry();
+                setAccessToken(null);
+                pendingPostAuthActionRef.current = () => handleSyncNow();
+                const msg = 'Google authorization expired while reading Drive. Please re-authenticate.';
+                setGoogleConnectError(msg);
+                setAuthAlertBanner(msg);
+                setShowGoogleConnectModal(true);
+              }
+              return { success: false, files: [], config: cfg };
             }
-          );
+          });
+
+          const folderResults = await Promise.all(folderPromises);
+          const mergedFiles: DriveCertificateFile[] = [];
+          const updatedDriveConfigs: GoogleDriveFolderConfig[] = [];
+
+          for (const res of folderResults) {
+            updatedDriveConfigs.push(res.config);
+            for (const f of res.files) {
+              if (!mergedFiles.some((existing) => existing.id === f.id)) {
+                mergedFiles.push(f);
+              }
+            }
+          }
+
+          setDriveConfigs(updatedDriveConfigs);
+          saveDriveConfigs(updatedDriveConfigs);
+          if (updatedDriveConfigs.length > 0) {
+            setDriveConfig(updatedDriveConfigs[0]);
+            saveDriveConfig(updatedDriveConfigs[0]);
+          }
 
           detailedSteps.DRIVE.status = 'COMPLETED';
           detailedSteps.DRIVE.progressPercent = 100;
-          detailedSteps.DRIVE.itemsProcessed = fetchedDriveFiles.length;
-          detailedSteps.DRIVE.detail = `Discovered ${fetchedDriveFiles.length} certificate files across all subfolders`;
+          detailedSteps.DRIVE.itemsProcessed = mergedFiles.length;
+          detailedSteps.DRIVE.detail = `Discovered ${mergedFiles.length} certificate files across ${activeDriveConfigs.length} folder(s) in parallel`;
           detailedSteps.DRIVE.endTime = Date.now();
 
-          // Update driveConfig lastSynced
-          const updatedDrive = {
-            ...driveConfig,
-            fileCount: fetchedDriveFiles.length,
-            lastSynced: new Date().toISOString(),
-          };
-          setDriveConfig(updatedDrive);
-          saveDriveConfig(updatedDrive);
+          return { files: mergedFiles, configs: updatedDriveConfigs };
+        })(),
 
-          emitSyncProgress(
-            'DRIVE',
-            2,
-            50,
-            `Step 2/4: Google Drive scanned (${fetchedDriveFiles.length} files)`,
-            `${fetchedDriveFiles.length} files`
-          );
-        } catch (err: any) {
-          console.error('Drive fetch error:', err);
-          detailedSteps.DRIVE.status = 'ERROR';
-          detailedSteps.DRIVE.error = err.message;
-          if (isAuthExpiredError(err)) {
-            handleTokenExpiry();
-            setAccessToken(null);
-            pendingPostAuthActionRef.current = () => handleSyncNow();
-            const msg = 'Google authorization expired or invalid while reading Drive. Please re-authenticate.';
-            setGoogleConnectError(msg);
-            setAuthAlertBanner(msg);
-            setShowGoogleConnectModal(true);
+        // --- PARALLEL SHEETS SCAN ---
+        (async () => {
+          if (activeSheetConfigs.length === 0) return { rows: [], configs: [], proof: null };
+
+          const sheetPromises = activeSheetConfigs.map(async (sCfg, sIdx) => {
+            const sheetTabName = sCfg.sheetName || 'Sheet1';
+            try {
+              const sheetResult = await readSpreadsheetValues(
+                sCfg.spreadsheetId,
+                sheetTabName,
+                currentToken,
+                sCfg.columnMapping
+              );
+
+              const proof: SheetSyncProof = {
+                proofId: `PROOF-${Date.now().toString(36).toUpperCase()}-${sIdx}`,
+                timestamp: new Date().toISOString(),
+                spreadsheetId: sCfg.spreadsheetId,
+                spreadsheetName: sCfg.spreadsheetName,
+                sheetName: sheetTabName,
+                spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${sCfg.spreadsheetId}/edit`,
+                totalRowsScanned: sheetResult.rows.length,
+                matchedCount: sheetResult.rows.filter((r) => r.matchStatus === 'MATCHED').length,
+                outsideClassCount: sheetResult.rows.filter((r) => r.matchStatus === 'OUTSIDE_CLASS').length,
+                unmatchedCount: sheetResult.rows.filter(
+                  (r) => r.matchStatus !== 'MATCHED' && r.matchStatus !== 'OUTSIDE_CLASS'
+                ).length,
+                rows: sheetResult.rows,
+                columnMappingUsed: sCfg.columnMapping || sheetResult.detectedMapping,
+              };
+
+              return {
+                success: true,
+                rows: sheetResult.rows,
+                config: {
+                  ...sCfg,
+                  lastSynced: new Date().toISOString(),
+                },
+                proof,
+              };
+            } catch (err: any) {
+              console.error(`Sheet fetch error for "${sCfg.spreadsheetName}":`, err);
+              errorMessages.push(`Google Sheets (${sCfg.spreadsheetName}): ${err.message}`);
+              if (isAuthExpiredError(err)) {
+                handleTokenExpiry();
+                setAccessToken(null);
+                pendingPostAuthActionRef.current = () => handleSyncNow();
+                const msg = 'Google authorization expired while reading Sheets. Please re-authenticate.';
+                setGoogleConnectError(msg);
+                setAuthAlertBanner(msg);
+                setShowGoogleConnectModal(true);
+              }
+              return { success: false, rows: [], config: sCfg, proof: null };
+            }
+          });
+
+          const sheetResults = await Promise.all(sheetPromises);
+          const mergedRows: SheetRowRecord[] = [];
+          const updatedSheetConfigs: GoogleSheetConfig[] = [];
+          let lastProof: SheetSyncProof | null = null;
+
+          for (const res of sheetResults) {
+            updatedSheetConfigs.push(res.config);
+            mergedRows.push(...res.rows);
+            if (res.proof) {
+              lastProof = res.proof;
+            }
           }
-          errorMessages.push(`Google Drive: ${err.message}`);
-        }
-      } else {
-        detailedSteps.DRIVE.status = 'SKIPPED';
-        detailedSteps.DRIVE.detail = 'No Drive folder configured';
-      }
 
-      // 3. Read Google Sheets
-      if (sheetConfig?.spreadsheetId && sheetConfig.sheetName) {
-        try {
-          detailedSteps.SHEET.status = 'RUNNING';
-          detailedSteps.SHEET.progressPercent = 25;
-          detailedSteps.SHEET.startTime = Date.now();
-          emitSyncProgress(
-            'SHEET',
-            3,
-            55,
-            `Step 3/4: Querying Google Sheet '${sheetConfig.sheetName}'...`,
-            sheetConfig.spreadsheetName || 'Spreadsheet',
-            {
-              currentBatch: 1,
-              totalBatches: 2,
-              batchPercent: 40,
-              description: `Fetching worksheet rows from Google Sheets API...`,
-            }
-          );
+          if (lastProof) {
+            setSheetSyncProof(lastProof);
+            saveSheetSyncProof(lastProof);
+          }
 
-          const sheetResult = await readSpreadsheetValues(
-            sheetConfig.spreadsheetId,
-            sheetConfig.sheetName,
-            currentToken,
-            sheetConfig.columnMapping
-          );
-          fetchedSheetRows = sheetResult.rows;
-
-          detailedSteps.SHEET.itemsProcessed = fetchedSheetRows.length;
-          detailedSteps.SHEET.progressPercent = 80;
-          emitSyncProgress(
-            'SHEET',
-            3,
-            68,
-            `Step 3/4: Parsing ${fetchedSheetRows.length} rows & column mappings...`,
-            `${fetchedSheetRows.length} rows scanned`,
-            {
-              currentBatch: 2,
-              totalBatches: 2,
-              batchPercent: 85,
-              description: `Mapping Roll No, Student Name, and Certificate Type columns...`,
-            }
-          );
-
-          // Build Live Sheet Sync Proof
-          const proof: SheetSyncProof = {
-            proofId: `PROOF-${Date.now().toString(36).toUpperCase()}`,
-            timestamp: new Date().toISOString(),
-            spreadsheetId: sheetConfig.spreadsheetId,
-            spreadsheetName: sheetConfig.spreadsheetName,
-            sheetName: sheetConfig.sheetName,
-            spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${sheetConfig.spreadsheetId}/edit`,
-            totalRowsScanned: fetchedSheetRows.length,
-            matchedCount: fetchedSheetRows.filter((r) => r.matchStatus === 'MATCHED').length,
-            outsideClassCount: fetchedSheetRows.filter((r) => r.matchStatus === 'OUTSIDE_CLASS').length,
-            unmatchedCount: fetchedSheetRows.filter(
-              (r) => r.matchStatus !== 'MATCHED' && r.matchStatus !== 'OUTSIDE_CLASS'
-            ).length,
-            rows: fetchedSheetRows,
-            columnMappingUsed: sheetConfig.columnMapping || sheetResult.detectedMapping,
-          };
-          setSheetSyncProof(proof);
-          saveSheetSyncProof(proof);
+          setSheetConfigs(updatedSheetConfigs);
+          saveSheetConfigs(updatedSheetConfigs);
+          if (updatedSheetConfigs.length > 0) {
+            setSheetConfig(updatedSheetConfigs[0]);
+            saveSheetConfig(updatedSheetConfigs[0]);
+          }
 
           detailedSteps.SHEET.status = 'COMPLETED';
           detailedSteps.SHEET.progressPercent = 100;
-          detailedSteps.SHEET.detail = `Parsed ${fetchedSheetRows.length} submission responses`;
+          detailedSteps.SHEET.itemsProcessed = mergedRows.length;
+          detailedSteps.SHEET.detail = `Parsed ${mergedRows.length} submission rows across ${activeSheetConfigs.length} sheet(s) in parallel`;
           detailedSteps.SHEET.endTime = Date.now();
 
-          // Update sheetConfig lastSynced
-          const updatedSheet = {
-            ...sheetConfig,
-            lastSynced: new Date().toISOString(),
-          };
-          setSheetConfig(updatedSheet);
-          saveSheetConfig(updatedSheet);
+          return { rows: mergedRows, configs: updatedSheetConfigs, proof: lastProof };
+        })(),
+      ]);
 
-          emitSyncProgress(
-            'SHEET',
-            3,
-            75,
-            `Step 3/4: Google Sheets read (${fetchedSheetRows.length} rows)`,
-            `${fetchedSheetRows.length} rows`
-          );
-        } catch (err: any) {
-          console.error('Sheet fetch error:', err);
-          detailedSteps.SHEET.status = 'ERROR';
-          detailedSteps.SHEET.error = err.message;
-          if (isAuthExpiredError(err)) {
-            handleTokenExpiry();
-            setAccessToken(null);
-            pendingPostAuthActionRef.current = () => handleSyncNow();
-            const msg = 'Google authorization expired or invalid while reading Sheets. Please re-authenticate.';
-            setGoogleConnectError(msg);
-            setAuthAlertBanner(msg);
-            setShowGoogleConnectModal(true);
-          }
-          errorMessages.push(`Google Sheets: ${err.message}`);
-        }
-      } else {
-        detailedSteps.SHEET.status = 'SKIPPED';
-        detailedSteps.SHEET.detail = 'No Sheet configured';
-      }
+      fetchedDriveFiles = driveScanResult.files;
+      fetchedSheetRows = sheetScanResult.rows;
+
+      emitSyncProgress(
+        'ENGINE',
+        4,
+        80,
+        `Step 4/4: Reconciling ${fetchedDriveFiles.length} Drive files & ${fetchedSheetRows.length} Sheet rows across multi-sources...`,
+        `${fetchedDriveFiles.length} files • ${fetchedSheetRows.length} rows`
+      );
 
       // 4. Execute Core Sync Engine
       detailedSteps.ENGINE.status = 'RUNNING';
@@ -1326,7 +1376,8 @@ export default function App() {
 
       const { action } = addOrUpdateRosterStudent({ rollNo: cleanRoll, name: cleanName });
       
-      // Permanently write to Supabase database so other administrators see them!
+      // Permanently write to Supabase database (both class_roster and student_statuses) so other administrators see them!
+      saveClassRosterToSupabase([{ rollNo: cleanRoll, name: cleanName }]);
       saveStudentStatusesToSupabase([{
         rollNo: cleanRoll,
         name: cleanName,
@@ -1364,7 +1415,8 @@ export default function App() {
       const result = batchAddRosterStudents(students);
       const allTouched = [...result.added, ...result.updated];
       if (allTouched.length > 0) {
-        // Permanently write all touched students to Supabase
+        // Permanently write all touched students to Supabase (class_roster and student_statuses)
+        await saveClassRosterToSupabase(allTouched.map((s) => ({ rollNo: s.rollNo, name: s.name })));
         await saveStudentStatusesToSupabase(
           allTouched.map((s) => ({
             rollNo: s.rollNo,
@@ -1400,7 +1452,8 @@ export default function App() {
       const cleanName = newName.trim();
       editRosterStudent(cleanRoll, cleanName);
 
-      // Permanently update in Supabase database as well!
+      // Permanently update in Supabase database (both class_roster and student_statuses)
+      saveClassRosterToSupabase([{ rollNo: cleanRoll, name: cleanName }]);
       setStudentStatuses((prev) => {
         const currentStudentStatus = prev.find(s => s.rollNo === cleanRoll);
         saveStudentStatusesToSupabase([{

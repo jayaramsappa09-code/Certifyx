@@ -19,7 +19,9 @@ const STORAGE_KEYS = {
   DRIVE_STATUS_OVERRIDES: 'ccam_drive_status_override_map',
   SHEET_STATUS_OVERRIDES: 'ccam_sheet_status_override_map',
   DRIVE_CONFIG: 'ccam_drive_folder_config',
+  DRIVE_CONFIGS_LIST: 'ccam_drive_folder_configs_list',
   SHEET_CONFIG: 'ccam_google_sheet_config',
+  SHEET_CONFIGS_LIST: 'ccam_google_sheet_configs_list',
   SETTINGS: 'ccam_app_settings',
   SYNC_HISTORY: 'ccam_sync_history',
   AUDIT_LOGS: 'ccam_audit_logs',
@@ -134,9 +136,41 @@ export function setBatchSheetStatusOverride(updates: Record<string, boolean>): v
   }
 }
 
-// 2. Drive Folder Config
+// 2. Drive Folder Configs (Multi-Drive Folders Support)
+export function getSavedDriveConfigs(): GoogleDriveFolderConfig[] {
+  try {
+    const listRaw = localStorage.getItem(STORAGE_KEYS.DRIVE_CONFIGS_LIST);
+    if (listRaw) {
+      const parsed = JSON.parse(listRaw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+    // Fallback to single legacy config if present
+    const single = getSavedDriveConfig();
+    return single ? [single] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveDriveConfigs(configs: GoogleDriveFolderConfig[]): void {
+  try {
+    const valid = (configs || []).filter((c) => c && c.folderId);
+    localStorage.setItem(STORAGE_KEYS.DRIVE_CONFIGS_LIST, JSON.stringify(valid));
+    // Keep primary legacy config in sync
+    if (valid.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.DRIVE_CONFIG, JSON.stringify(valid[0]));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.DRIVE_CONFIG);
+    }
+  } catch (e) {
+    console.error('Failed to save drive configs list:', e);
+  }
+}
+
 export function getSavedDriveConfig(): GoogleDriveFolderConfig | null {
   try {
+    const list = getSavedDriveConfigs();
+    if (list.length > 0) return list[0];
     const raw = localStorage.getItem(STORAGE_KEYS.DRIVE_CONFIG);
     return raw ? JSON.parse(raw) : null;
   } catch {
@@ -146,8 +180,16 @@ export function getSavedDriveConfig(): GoogleDriveFolderConfig | null {
 
 export function saveDriveConfig(config: GoogleDriveFolderConfig | null): void {
   try {
-    if (config) {
+    if (config && config.folderId) {
       localStorage.setItem(STORAGE_KEYS.DRIVE_CONFIG, JSON.stringify(config));
+      const existing = getSavedDriveConfigs();
+      const idx = existing.findIndex((c) => c.folderId === config.folderId);
+      if (idx !== -1) {
+        existing[idx] = config;
+      } else {
+        existing.unshift(config);
+      }
+      localStorage.setItem(STORAGE_KEYS.DRIVE_CONFIGS_LIST, JSON.stringify(existing));
     } else {
       localStorage.removeItem(STORAGE_KEYS.DRIVE_CONFIG);
     }
@@ -156,9 +198,41 @@ export function saveDriveConfig(config: GoogleDriveFolderConfig | null): void {
   }
 }
 
-// 3. Google Sheet Config
+// 3. Google Sheet Configs (Multi-Sheets & Worksheets Support)
+export function getSavedSheetConfigs(): GoogleSheetConfig[] {
+  try {
+    const listRaw = localStorage.getItem(STORAGE_KEYS.SHEET_CONFIGS_LIST);
+    if (listRaw) {
+      const parsed = JSON.parse(listRaw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+    // Fallback to single legacy config if present
+    const single = getSavedSheetConfig();
+    return single ? [single] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveSheetConfigs(configs: GoogleSheetConfig[]): void {
+  try {
+    const valid = (configs || []).filter((c) => c && c.spreadsheetId);
+    localStorage.setItem(STORAGE_KEYS.SHEET_CONFIGS_LIST, JSON.stringify(valid));
+    // Keep primary legacy config in sync
+    if (valid.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.SHEET_CONFIG, JSON.stringify(valid[0]));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.SHEET_CONFIG);
+    }
+  } catch (e) {
+    console.error('Failed to save sheet configs list:', e);
+  }
+}
+
 export function getSavedSheetConfig(): GoogleSheetConfig | null {
   try {
+    const list = getSavedSheetConfigs();
+    if (list.length > 0) return list[0];
     const raw = localStorage.getItem(STORAGE_KEYS.SHEET_CONFIG);
     return raw ? JSON.parse(raw) : null;
   } catch {
@@ -168,8 +242,17 @@ export function getSavedSheetConfig(): GoogleSheetConfig | null {
 
 export function saveSheetConfig(config: GoogleSheetConfig | null): void {
   try {
-    if (config) {
+    if (config && config.spreadsheetId) {
       localStorage.setItem(STORAGE_KEYS.SHEET_CONFIG, JSON.stringify(config));
+      const existing = getSavedSheetConfigs();
+      const key = `${config.spreadsheetId}_${config.sheetName || 'default'}`;
+      const idx = existing.findIndex((c) => `${c.spreadsheetId}_${c.sheetName || 'default'}` === key);
+      if (idx !== -1) {
+        existing[idx] = config;
+      } else {
+        existing.unshift(config);
+      }
+      localStorage.setItem(STORAGE_KEYS.SHEET_CONFIGS_LIST, JSON.stringify(existing));
     } else {
       localStorage.removeItem(STORAGE_KEYS.SHEET_CONFIG);
     }

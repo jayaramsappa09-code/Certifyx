@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Folder,
   FileSpreadsheet,
@@ -16,6 +16,10 @@ import {
   Trash2,
   Check,
   FolderOpen,
+  Code,
+  Sparkles,
+  Wand2,
+  Info,
 } from 'lucide-react';
 import {
   GoogleDriveFolderConfig,
@@ -24,7 +28,12 @@ import {
   AppSettings,
 } from '../types';
 import { isAuthExpiredError } from '../services/firebaseAuth';
-import { extractDriveFolderId, listDriveFolders, getDriveFolderMetadata, DriveFolderInfo } from '../services/googleDriveService';
+import {
+  extractDriveFolderId,
+  listDriveFolders,
+  getDriveFolderMetadata,
+  DriveFolderInfo,
+} from '../services/googleDriveService';
 import {
   extractSpreadsheetId,
   listGoogleSpreadsheets,
@@ -33,25 +42,29 @@ import {
   SpreadsheetListItem,
 } from '../services/googleSheetsService';
 import { parseFilenameWithCustomRegex, detectCertificateType } from '../services/syncEngine';
-import { ROSTER_MAP, isValidClassRollNumber, normalizeRollNumber } from '../data/classRoster';
+import { ROSTER_MAP, normalizeRollNumber } from '../data/classRoster';
 import { addAuditLog } from '../services/storageService';
 import { SupabaseGoogleOutsideConfigCard } from './SupabaseGoogleOutsideConfigCard';
-import { Code, Sparkles, Wand2, Terminal, Info } from 'lucide-react';
 
 interface GoogleIntegrationTabProps {
   accessToken: string | null;
   userEmail: string;
   driveConfig: GoogleDriveFolderConfig | null;
   sheetConfig: GoogleSheetConfig | null;
+  driveConfigs?: GoogleDriveFolderConfig[];
+  sheetConfigs?: GoogleSheetConfig[];
   settings: AppSettings;
   onUpdateDriveConfig: (config: GoogleDriveFolderConfig | null) => void;
   onUpdateSheetConfig: (config: GoogleSheetConfig | null) => void;
+  onUpdateDriveConfigs?: (configs: GoogleDriveFolderConfig[]) => void;
+  onUpdateSheetConfigs?: (configs: GoogleSheetConfig[]) => void;
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
   onConnectGoogle: () => void;
   onOpenConnectOptions?: () => void;
   onOpenSheetProof?: () => void;
   onDisconnectGoogle: () => void;
   onTriggerSync: () => void;
+  onToast?: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
@@ -59,22 +72,42 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
   userEmail,
   driveConfig,
   sheetConfig,
+  driveConfigs = [],
+  sheetConfigs = [],
   settings,
   onUpdateDriveConfig,
   onUpdateSheetConfig,
+  onUpdateDriveConfigs,
+  onUpdateSheetConfigs,
   onUpdateSettings,
   onConnectGoogle,
   onOpenConnectOptions,
   onOpenSheetProof,
   onDisconnectGoogle,
   onTriggerSync,
+  onToast,
 }) => {
+  // Normalize active Drive configs list
+  const activeDriveList = useMemo<GoogleDriveFolderConfig[]>(() => {
+    if (driveConfigs && driveConfigs.length > 0) return driveConfigs;
+    if (driveConfig && driveConfig.folderId) return [driveConfig];
+    return [];
+  }, [driveConfigs, driveConfig]);
+
+  // Normalize active Sheet configs list
+  const activeSheetList = useMemo<GoogleSheetConfig[]>(() => {
+    if (sheetConfigs && sheetConfigs.length > 0) return sheetConfigs;
+    if (sheetConfig && sheetConfig.spreadsheetId) return [sheetConfig];
+    return [];
+  }, [sheetConfigs, sheetConfig]);
+
   // Folder state
   const [folderInput, setFolderInput] = useState('');
   const [isBrowsingFolders, setIsBrowsingFolders] = useState(false);
   const [availableFolders, setAvailableFolders] = useState<DriveFolderInfo[]>([]);
   const [isLoadingFolders, setIsLoadingFolders] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [testingDrive, setTestingDrive] = useState(false);
 
   // Sheet state
   const [sheetInput, setSheetInput] = useState('');
@@ -82,11 +115,15 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
   const [availableSheets, setAvailableSheets] = useState<SpreadsheetListItem[]>([]);
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
+  const [testingSheet, setTestingSheet] = useState(false);
 
-  // Column mapping state
+  // Selected sheet for mapping inspection
+  const [selectedSheetIndex, setSelectedSheetIndex] = useState<number>(0);
+  const currentSheet = activeSheetList[selectedSheetIndex] || activeSheetList[0] || null;
+
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
   const [mappingState, setMappingState] = useState<ColumnMapping>(
-    sheetConfig?.columnMapping || {
+    currentSheet?.columnMapping || {
       rollNoCol: '',
       nameCol: '',
       certTypeCol: '',
@@ -95,11 +132,12 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
     }
   );
 
-  // Testing connection states
-  const [testingDrive, setTestingDrive] = useState(false);
-  const [driveTestResult, setDriveTestResult] = useState<string | null>(null);
-  const [testingSheet, setTestingSheet] = useState(false);
-  const [sheetTestResult, setSheetTestResult] = useState<string | null>(null);
+  // Update mapping state when selected sheet changes
+  React.useEffect(() => {
+    if (currentSheet?.columnMapping) {
+      setMappingState(currentSheet.columnMapping);
+    }
+  }, [selectedSheetIndex, currentSheet]);
 
   // New admin email input
   const [newAdminEmail, setNewAdminEmail] = useState('');
@@ -121,12 +159,14 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
     {
       name: 'Full Named Groups (Roll + Name + Title)',
       desc: 'Extracts Roll, Student Name, and Event Title into separate metadata',
-      pattern: '(?<rollNo>[0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2})[_-]?(?<studentName>[A-Za-z\\s]+)?[_-]?(?<certTitle>[A-Za-z0-9\\s]+)?',
+      pattern:
+        '(?<rollNo>[0-9]{2}[A-Za-z][0-9]{2}[A-Za-z][0-9]{2}[A-Za-z0-9]{2})[_-]?(?<studentName>[A-Za-z\\s]+)?[_-]?(?<certTitle>[A-Za-z0-9\\s]+)?',
     },
     {
       name: 'Separated Delimiters (Hyphen/Underscore)',
       desc: 'Matches 25_A31A_05_GB, 25-A31A-05-GB, or spaced formats',
-      pattern: '([0-9]{2}[-_\\s]?[A-Za-z][-_\\s]?[0-9]{2}[-_\\s]?[A-Za-z][-_\\s]?[0-9]{2}[-_\\s]?[A-Za-z0-9]{2})',
+      pattern:
+        '([0-9]{2}[-_\\s]?[A-Za-z][-_\\s]?[0-9]{2}[-_\\s]?[A-Za-z][-_\\s]?[0-9]{2}[-_\\s]?[A-Za-z0-9]{2})',
     },
     {
       name: 'Roll Suffix (e.g. 05GB, 05EN, 05DV)',
@@ -165,7 +205,6 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
 
   const handleSaveRegex = () => {
     try {
-      // Validate regex syntax
       new RegExp(customRegexInput.trim(), 'i');
       onUpdateSettings({ customFilenameRegex: customRegexInput.trim() });
       addAuditLog(
@@ -192,12 +231,11 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
     } catch {}
   };
 
-  // 1. Handle Drive Folder Selection / URL paste
+  // 1. Add Drive Folder to Active List
   const handleConnectFolder = async (folderIdOrUrl?: string) => {
     const target = folderIdOrUrl || folderInput;
     if (!target) return;
     setFolderError(null);
-    setDriveTestResult(null);
 
     const folderId = extractDriveFolderId(target);
     if (!folderId) {
@@ -210,17 +248,31 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
       return;
     }
 
+    // Check if folder is already connected
+    if (activeDriveList.some((f) => f.folderId === folderId)) {
+      onToast?.('This Google Drive folder is already connected in the scan list.', 'info');
+      setFolderInput('');
+      setIsBrowsingFolders(false);
+      return;
+    }
+
     try {
       setTestingDrive(true);
       const info = await getDriveFolderMetadata(folderId, accessToken);
-      const newConfig: GoogleDriveFolderConfig = {
+      const newFolder: GoogleDriveFolderConfig = {
         folderId: info.id,
         folderName: info.name,
         lastSynced: new Date().toISOString(),
       };
-      onUpdateDriveConfig(newConfig);
+
+      const updated = [...activeDriveList, newFolder];
+      if (onUpdateDriveConfigs) {
+        onUpdateDriveConfigs(updated);
+      }
+      onUpdateDriveConfig(updated[0] || null);
+
       addAuditLog('Drive folder connected', userEmail, `Connected folder "${info.name}" (${info.id})`, 'DRIVE');
-      setDriveTestResult(`Connected successfully to "${info.name}"`);
+      onToast?.(`🎉 Connected Drive Folder: "${info.name}"!`, 'success');
       setFolderInput('');
       setIsBrowsingFolders(false);
     } catch (e: any) {
@@ -228,6 +280,16 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
     } finally {
       setTestingDrive(false);
     }
+  };
+
+  const handleRemoveFolder = (folderId: string) => {
+    const updated = activeDriveList.filter((f) => f.folderId !== folderId);
+    if (onUpdateDriveConfigs) {
+      onUpdateDriveConfigs(updated);
+    }
+    onUpdateDriveConfig(updated[0] || null);
+    addAuditLog('Drive folder removed', userEmail, `Removed folder ID: ${folderId}`, 'DRIVE');
+    onToast?.('Removed Drive folder from scan list.', 'info');
   };
 
   const handleBrowseFolders = async () => {
@@ -248,12 +310,11 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
     }
   };
 
-  // 2. Handle Google Sheet Selection / URL paste
+  // 2. Add Google Sheet to Active List
   const handleConnectSheet = async (sheetIdOrUrl?: string) => {
     const target = sheetIdOrUrl || sheetInput;
     if (!target) return;
     setSheetError(null);
-    setSheetTestResult(null);
 
     const spreadsheetId = extractSpreadsheetId(target);
     if (!spreadsheetId) {
@@ -284,9 +345,25 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
         columnMapping: valuesRes.detectedMapping,
         lastSynced: new Date().toISOString(),
       };
-      onUpdateSheetConfig(newConfig);
+
+      // Check if already in list with same tab
+      const existingIdx = activeSheetList.findIndex((s) => s.spreadsheetId === meta.id);
+      let updated: GoogleSheetConfig[];
+      if (existingIdx !== -1) {
+        updated = [...activeSheetList];
+        updated[existingIdx] = newConfig;
+      } else {
+        updated = [...activeSheetList, newConfig];
+      }
+
+      if (onUpdateSheetConfigs) {
+        onUpdateSheetConfigs(updated);
+      }
+      onUpdateSheetConfig(updated[0] || null);
+      setSelectedSheetIndex(updated.length - 1);
+
       addAuditLog('Google Sheet connected', userEmail, `Connected sheet "${meta.title}" (${meta.id})`, 'SHEETS');
-      setSheetTestResult(`Connected to "${meta.title}" with ${meta.sheets.length} worksheet(s).`);
+      onToast?.(`🎉 Connected Google Sheet: "${meta.title}" (${defaultSheetName})!`, 'success');
       setSheetInput('');
       setIsBrowsingSheets(false);
     } catch (e: any) {
@@ -294,6 +371,19 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
     } finally {
       setTestingSheet(false);
     }
+  };
+
+  const handleRemoveSheet = (spreadsheetId: string, sheetName: string) => {
+    const updated = activeSheetList.filter(
+      (s) => !(s.spreadsheetId === spreadsheetId && s.sheetName === sheetName)
+    );
+    if (onUpdateSheetConfigs) {
+      onUpdateSheetConfigs(updated);
+    }
+    onUpdateSheetConfig(updated[0] || null);
+    setSelectedSheetIndex(0);
+    addAuditLog('Google Sheet removed', userEmail, `Removed sheet: ${spreadsheetId}`, 'SHEETS');
+    onToast?.('Removed spreadsheet from scan list.', 'info');
   };
 
   const handleBrowseSheets = async () => {
@@ -314,34 +404,49 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
     }
   };
 
-  const handleChangeWorksheet = async (sheetName: string) => {
-    if (!sheetConfig || !accessToken) return;
+  const handleChangeWorksheet = async (sheetIdx: number, sheetName: string) => {
+    const targetSheet = activeSheetList[sheetIdx];
+    if (!targetSheet || !accessToken) return;
+
     try {
-      const valuesRes = await readSpreadsheetValues(sheetConfig.spreadsheetId, sheetName, accessToken);
+      const valuesRes = await readSpreadsheetValues(targetSheet.spreadsheetId, sheetName, accessToken);
       setSheetHeaders(valuesRes.headers);
       setMappingState(valuesRes.detectedMapping);
 
-      const updated = {
-        ...sheetConfig,
+      const updated = [...activeSheetList];
+      updated[sheetIdx] = {
+        ...targetSheet,
         sheetName,
         columnMapping: valuesRes.detectedMapping,
       };
-      onUpdateSheetConfig(updated);
-      addAuditLog('Worksheet changed', userEmail, `Changed worksheet to "${sheetName}"`, 'SHEETS');
+
+      if (onUpdateSheetConfigs) {
+        onUpdateSheetConfigs(updated);
+      }
+      onUpdateSheetConfig(updated[0] || null);
+      addAuditLog('Worksheet changed', userEmail, `Changed worksheet to "${sheetName}" in "${targetSheet.spreadsheetName}"`, 'SHEETS');
+      onToast?.(`Switched to worksheet "${sheetName}"`, 'success');
     } catch (e: any) {
       setSheetError(e.message || 'Failed to read worksheet.');
     }
   };
 
-  const handleSaveMapping = () => {
-    if (!sheetConfig) return;
-    const updated = {
-      ...sheetConfig,
+  const handleSaveMapping = (sheetIdx: number) => {
+    const targetSheet = activeSheetList[sheetIdx];
+    if (!targetSheet) return;
+
+    const updated = [...activeSheetList];
+    updated[sheetIdx] = {
+      ...targetSheet,
       columnMapping: mappingState,
     };
-    onUpdateSheetConfig(updated);
-    addAuditLog('Column mapping saved', userEmail, `Updated spreadsheet column mapping`, 'SHEETS');
-    setSheetTestResult('Column mapping saved successfully.');
+
+    if (onUpdateSheetConfigs) {
+      onUpdateSheetConfigs(updated);
+    }
+    onUpdateSheetConfig(updated[0] || null);
+    addAuditLog('Column mapping saved', userEmail, `Updated column mapping for "${targetSheet.spreadsheetName}"`, 'SHEETS');
+    onToast?.('Spreadsheet column mapping saved successfully!', 'success');
   };
 
   // 3. Admin Emails Management
@@ -352,542 +457,535 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
 
     const updated = [...settings.adminEmails, normalized];
     onUpdateSettings({ adminEmails: updated });
-    addAuditLog('Admin added', userEmail, `Added admin email ${normalized}`, 'SETTINGS');
+    addAuditLog('Admin added', userEmail, `Added admin: ${normalized}`, 'SETTINGS');
     setNewAdminEmail('');
   };
 
   const handleRemoveAdminEmail = (emailToRemove: string) => {
-    if (settings.adminEmails.length <= 1) return; // Prevent removing all admins
+    if (emailToRemove === 'jayaramsappa09@gmail.com') return; // protect owner
     const updated = settings.adminEmails.filter((e) => e !== emailToRemove);
     onUpdateSettings({ adminEmails: updated });
-    addAuditLog('Admin removed', userEmail, `Removed admin email ${emailToRemove}`, 'SETTINGS');
+    addAuditLog('Admin removed', userEmail, `Removed admin: ${emailToRemove}`, 'SETTINGS');
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      {/* 1. Google Account Connection Card */}
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* 1. Account & Connection Status Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-              <Shield className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+              <Link className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white">
+                <h3 className="text-base font-bold text-white tracking-tight">
                   Google Workspace Authentication
-                </h2>
+                </h3>
                 {accessToken ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Connected
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Connected</span>
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950 text-amber-300 border border-amber-800">
-                    <AlertCircle className="w-3.5 h-3.5" />
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-950 text-amber-300 border border-amber-800">
                     Not Connected
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Official Google OAuth 2.0 with minimal read-only scopes (Drive + Sheets)
+                OAuth 2.0 authorization grants read-only access to scan Google Drive folders & Sheets.
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {accessToken ? (
-              <button
-                onClick={onDisconnectGoogle}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl transition cursor-pointer"
-              >
-                Disconnect Account
-              </button>
-            ) : (
               <>
                 <button
-                  onClick={onConnectGoogle}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
+                  type="button"
+                  onClick={onTriggerSync}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/20 cursor-pointer"
                 >
-                  <span>Connect Google Account</span>
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Sync All Sources Now</span>
                 </button>
-                {onOpenConnectOptions && (
-                  <button
-                    onClick={onOpenConnectOptions}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-xl transition cursor-pointer"
-                  >
-                    Connection Options &amp; Manual Token
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={onDisconnectGoogle}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 transition cursor-pointer"
+                >
+                  Disconnect
+                </button>
               </>
+            ) : (
+              <button
+                type="button"
+                onClick={onConnectGoogle}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-lg shadow-blue-600/30 cursor-pointer"
+              >
+                <span>Connect Google Account</span>
+              </button>
             )}
           </div>
         </div>
-
-        {accessToken && (
-          <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 text-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-400">Authorized Administrator:</span>
-              <span className="font-mono text-emerald-400 font-semibold">{userEmail}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-400">OAuth Scopes Granted:</span>
-              <span className="font-mono text-slate-300 text-[11px]">
-                drive.readonly, spreadsheets.readonly
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* 2. Google Drive Folder Connection */}
+      {/* 2. Multiple Google Drive Folders Connection */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
               <HardDrive className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Google Drive Folder</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">Google Drive Folders</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+                  {activeDriveList.length} Folder{activeDriveList.length === 1 ? '' : 's'} Active
+                </span>
+              </div>
               <p className="text-xs text-slate-400">
-                Primary source for student certificate files (PDFs, JPGs, PNGs)
+                Scan multiple Drive folders simultaneously for student certificates (PDFs, JPGs, PNGs).
               </p>
             </div>
           </div>
-
-          {driveConfig && (
-            <button
-              onClick={() => onUpdateDriveConfig(null)}
-              className="text-xs text-slate-400 hover:text-red-400 transition"
-            >
-              Change Folder
-            </button>
-          )}
         </div>
 
-        {driveConfig ? (
-          <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <span className="text-xs text-slate-500 font-semibold uppercase">
-                  Connected Folder
-                </span>
-                <h4 className="text-base font-bold text-white flex items-center gap-2">
-                  <Folder className="w-4 h-4 text-amber-400" />
-                  {driveConfig.folderName}
-                </h4>
-                <div className="text-xs font-mono text-slate-400 mt-0.5">
-                  ID: {driveConfig.folderId}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <a
-                  href={`https://drive.google.com/drive/folders/${driveConfig.folderId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-xl transition"
+        {/* List of Connected Drive Folders */}
+        {activeDriveList.length > 0 && (
+          <div className="space-y-2">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+              Active Folders Scanned in Parallel:
+            </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {activeDriveList.map((f, idx) => (
+                <div
+                  key={f.folderId}
+                  className="bg-slate-950/90 border border-slate-800 rounded-2xl p-3.5 space-y-2 flex flex-col justify-between"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Folder</span>
-                </a>
-              </div>
-            </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                        <Folder className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="truncate">{f.folderName}</span>
+                      </div>
+                      <p className="text-[11px] font-mono text-slate-400 truncate mt-0.5">
+                        ID: {f.folderId}
+                      </p>
+                    </div>
 
-            {driveTestResult && (
-              <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-xs text-emerald-300 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>{driveTestResult}</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                value={folderInput}
-                onChange={(e) => setFolderInput(e.target.value)}
-                placeholder="Paste Drive folder link (e.g. https://drive.google.com/drive/folders/...) or raw folder ID"
-                className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
-              />
-              <button
-                onClick={() => handleConnectFolder()}
-                disabled={testingDrive || !folderInput.trim()}
-                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition shrink-0 cursor-pointer"
-              >
-                {testingDrive ? 'Checking...' : 'Select Folder'}
-              </button>
-              <button
-                onClick={handleBrowseFolders}
-                disabled={isLoadingFolders || !accessToken}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition shrink-0 cursor-pointer flex items-center gap-1.5"
-              >
-                <FolderOpen className="w-4 h-4 text-amber-400" />
-                <span>Browse Drive</span>
-              </button>
-            </div>
-
-            {folderError && (
-              <div className="p-3 rounded-xl bg-red-950/70 border border-red-800 text-xs text-red-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                  <span>{folderError}</span>
-                </div>
-                {isAuthExpiredError(folderError) && (
-                  <button
-                    onClick={onConnectGoogle}
-                    className="px-3 py-1 bg-red-900/80 hover:bg-red-850 text-white font-medium rounded-lg text-xs shrink-0 cursor-pointer border border-red-700"
-                  >
-                    Re-authenticate Now
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Folder Picker List Modal/Drawer */}
-            {isBrowsingFolders && (
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-400 pb-2 border-b border-slate-800">
-                  <span>Available Folders in Your Google Drive:</span>
-                  <button
-                    onClick={() => setIsBrowsingFolders(false)}
-                    className="text-slate-500 hover:text-white"
-                  >
-                    Close
-                  </button>
-                </div>
-                {isLoadingFolders ? (
-                  <div className="py-6 text-center text-xs text-slate-500">
-                    Loading folders...
-                  </div>
-                ) : availableFolders.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-500">
-                    No folders found in your Google Drive root. Try pasting a folder link above.
-                  </div>
-                ) : (
-                  <div className="max-h-48 overflow-y-auto space-y-1">
-                    {availableFolders.map((f) => (
-                      <button
-                        key={f.id}
-                        onClick={() => handleConnectFolder(f.id)}
-                        className="w-full p-2.5 rounded-xl hover:bg-slate-900 transition flex items-center justify-between text-left text-xs cursor-pointer group"
+                    <div className="flex items-center gap-1 shrink-0">
+                      <a
+                        href={`https://drive.google.com/drive/folders/${f.folderId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition"
+                        title="Open in Google Drive"
                       >
-                        <div className="flex items-center gap-2 text-slate-200 font-medium group-hover:text-white">
-                          <Folder className="w-4 h-4 text-amber-400" />
-                          <span>{f.name}</span>
-                        </div>
-                        <span className="text-[11px] font-mono text-slate-500">
-                          {f.id.slice(0, 8)}...
-                        </span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFolder(f.folderId)}
+                        className="p-1.5 bg-slate-800 hover:bg-rose-900/50 text-slate-400 hover:text-rose-400 rounded-lg transition cursor-pointer"
+                        title="Remove folder"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                    ))}
+                    </div>
                   </div>
-                )}
-              </div>
-            )}
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900">
+                    <span>
+                      Discovered: <strong className="text-amber-300">{f.fileCount ?? '—'} files</strong>
+                    </span>
+                    <span>
+                      Synced: {f.lastSynced ? new Date(f.lastSynced).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
+
+        {/* Add Another Drive Folder Input Bar */}
+        <div className="pt-2 space-y-3">
+          <label className="text-xs font-semibold text-slate-300 block">
+            ➕ Add Google Drive Folder to Scan List:
+          </label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={folderInput}
+              onChange={(e) => setFolderInput(e.target.value)}
+              placeholder="Paste Drive folder link (e.g. https://drive.google.com/drive/folders/...) or ID"
+              className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="button"
+              onClick={() => handleConnectFolder()}
+              disabled={testingDrive || !folderInput.trim()}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition shrink-0 cursor-pointer flex items-center gap-1.5"
+            >
+              {testingDrive ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              <span>Add Folder</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleBrowseFolders}
+              disabled={isLoadingFolders || !accessToken}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition shrink-0 cursor-pointer flex items-center gap-1.5"
+            >
+              <FolderOpen className="w-4 h-4 text-amber-400" />
+              <span>Browse Drive</span>
+            </button>
+          </div>
+
+          {folderError && (
+            <div className="p-3 rounded-xl bg-red-950/70 border border-red-800 text-xs text-red-300 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{folderError}</span>
+            </div>
+          )}
+
+          {/* Folder Picker Drawer */}
+          {isBrowsingFolders && (
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-400 pb-2 border-b border-slate-800">
+                <span>Available Folders in Your Google Drive:</span>
+                <button
+                  type="button"
+                  onClick={() => setIsBrowsingFolders(false)}
+                  className="text-slate-500 hover:text-white cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+              {isLoadingFolders ? (
+                <div className="py-6 text-center text-xs text-slate-500">
+                  <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1 text-amber-400" />
+                  Loading folders...
+                </div>
+              ) : availableFolders.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-500">
+                  No folders found in your Google Drive root. Try pasting a folder link above.
+                </div>
+              ) : (
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {availableFolders.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => handleConnectFolder(f.id)}
+                      className="w-full p-2.5 rounded-xl hover:bg-slate-900 transition flex items-center justify-between text-left text-xs cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2 text-slate-200 font-medium group-hover:text-white">
+                        <Folder className="w-4 h-4 text-amber-400" />
+                        <span>{f.name}</span>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-500">
+                        {f.id.slice(0, 8)}...
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 3. Google Sheet Connection & Column Mapping */}
+      {/* 3. Multiple Google Sheets Connection & Mapping */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Google Sheet Connection</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">Google Sheets &amp; Responses</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  {activeSheetList.length} Sheet{activeSheetList.length === 1 ? '' : 's'} Active
+                </span>
+              </div>
               <p className="text-xs text-slate-400">
-                Primary spreadsheet source for tracking rows and student submissions
+                Connect and audit multiple response spreadsheets (Section A, Section B, Late Submissions).
               </p>
             </div>
           </div>
-
-          {sheetConfig && (
-            <button
-              onClick={() => onUpdateSheetConfig(null)}
-              className="text-xs text-slate-400 hover:text-red-400 transition"
-            >
-              Change Spreadsheet
-            </button>
-          )}
         </div>
 
-        {sheetConfig ? (
-          <div className="space-y-4">
-            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <span className="text-xs text-slate-500 font-semibold uppercase">
-                    Connected Spreadsheet
-                  </span>
-                  <h4 className="text-base font-bold text-white flex items-center gap-2">
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-                    {sheetConfig.spreadsheetName}
-                  </h4>
-                  <div className="text-xs font-mono text-slate-400 mt-0.5">
-                    ID: {sheetConfig.spreadsheetId}
-                  </div>
-                </div>
+        {/* List of Connected Google Sheets */}
+        {activeSheetList.length > 0 && (
+          <div className="space-y-3">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+              Active Spreadsheets Audited in Parallel:
+            </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {activeSheetList.map((s, idx) => (
+                <div
+                  key={`${s.spreadsheetId}_${s.sheetName}`}
+                  className={`border rounded-2xl p-4 space-y-3 transition ${
+                    selectedSheetIndex === idx
+                      ? 'bg-slate-950 border-emerald-500/60 shadow-lg shadow-emerald-950/40'
+                      : 'bg-slate-950/80 border-slate-800'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span className="truncate">{s.spreadsheetName}</span>
+                      </div>
+                      <p className="text-[11px] font-mono text-slate-400 truncate mt-0.5">
+                        ID: {s.spreadsheetId}
+                      </p>
+                    </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {onOpenSheetProof && (
-                    <button
-                      onClick={onOpenSheetProof}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-semibold rounded-xl transition cursor-pointer"
-                      title="Inspect raw rows, student matches, and proof evidence"
-                    >
-                      <FileSpreadsheet className="w-3.5 h-3.5" />
-                      <span>View Live Sheet Proof</span>
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <a
+                        href={`https://docs.google.com/spreadsheets/d/${s.spreadsheetId}/edit`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition"
+                        title="Open in Google Sheets"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSheet(s.spreadsheetId, s.sheetName)}
+                        className="p-1.5 bg-slate-800 hover:bg-rose-900/50 text-slate-400 hover:text-rose-400 rounded-lg transition cursor-pointer"
+                        title="Remove sheet"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Worksheet selector */}
+                  {s.availableSheets && s.availableSheets.length > 0 && (
+                    <div className="flex items-center justify-between gap-2 text-xs pt-2 border-t border-slate-900">
+                      <span className="text-slate-400 font-medium">Worksheet Tab:</span>
+                      <select
+                        value={s.sheetName}
+                        onChange={(e) => handleChangeWorksheet(idx, e.target.value)}
+                        className="px-2.5 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs text-emerald-300 font-semibold focus:outline-none"
+                      >
+                        {s.availableSheets.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   )}
 
-                  <a
-                    href={`https://docs.google.com/spreadsheets/d/${sheetConfig.spreadsheetId}/edit`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-xl transition"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Open Sheet</span>
-                  </a>
-                </div>
-              </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSheetIndex(idx)}
+                      className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                        selectedSheetIndex === idx
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {selectedSheetIndex === idx ? 'Editing Mapping' : 'Configure Columns'}
+                    </button>
 
-              {/* Worksheet Tab Selector */}
-              {sheetConfig.availableSheets && sheetConfig.availableSheets.length > 0 && (
-                <div className="pt-2 border-t border-slate-900 flex items-center gap-2 text-xs">
-                  <span className="text-slate-400 font-medium">Worksheet Tab:</span>
-                  <select
-                    value={sheetConfig.sheetName}
-                    onChange={(e) => handleChangeWorksheet(e.target.value)}
-                    className="px-3 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs text-emerald-300 font-semibold focus:outline-none"
-                  >
-                    {sheetConfig.availableSheets.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+                    {onOpenSheetProof && (
+                      <button
+                        type="button"
+                        onClick={onOpenSheetProof}
+                        className="text-xs text-emerald-400 hover:underline font-semibold cursor-pointer"
+                      >
+                        View Live Proof
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Add Another Google Sheet Input Bar */}
+        <div className="pt-2 space-y-3">
+          <label className="text-xs font-semibold text-slate-300 block">
+            ➕ Add Google Spreadsheet to Scan List:
+          </label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={sheetInput}
+              onChange={(e) => setSheetInput(e.target.value)}
+              placeholder="Paste Google Sheet URL (e.g. https://docs.google.com/spreadsheets/d/...) or ID"
+              className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="button"
+              onClick={() => handleConnectSheet()}
+              disabled={testingSheet || !sheetInput.trim()}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition shrink-0 cursor-pointer flex items-center gap-1.5"
+            >
+              {testingSheet ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              <span>Add Sheet</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleBrowseSheets}
+              disabled={isLoadingSheets || !accessToken}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition shrink-0 cursor-pointer flex items-center gap-1.5"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span>Browse Drive</span>
+            </button>
+          </div>
+
+          {sheetError && (
+            <div className="p-3 rounded-xl bg-red-950/70 border border-red-800 text-xs text-red-300 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{sheetError}</span>
+            </div>
+          )}
+
+          {/* Spreadsheet Picker Drawer */}
+          {isBrowsingSheets && (
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-400 pb-2 border-b border-slate-800">
+                <span>Available Spreadsheets in Your Drive:</span>
+                <button
+                  type="button"
+                  onClick={() => setIsBrowsingSheets(false)}
+                  className="text-slate-500 hover:text-white cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+              {isLoadingSheets ? (
+                <div className="py-6 text-center text-xs text-slate-500">
+                  <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1 text-emerald-400" />
+                  Loading spreadsheets...
+                </div>
+              ) : availableSheets.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-500">
+                  No spreadsheets found in your Google Drive. Try pasting the sheet link above.
+                </div>
+              ) : (
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {availableSheets.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => handleConnectSheet(s.id)}
+                      className="w-full p-2.5 rounded-xl hover:bg-slate-900 transition flex items-center justify-between text-left text-xs cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2 text-slate-200 font-medium group-hover:text-white">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                        <span>{s.name}</span>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-500">
+                        {s.id.slice(0, 8)}...
+                      </span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
+          )}
+        </div>
 
-            {/* Column Mapping Section (Section 11) */}
-            <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h5 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-blue-400" />
-                    Spreadsheet Column Mapping
-                  </h5>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Map the columns in your worksheet to the corresponding student fields.
-                  </p>
-                </div>
-                <button
-                  onClick={handleSaveMapping}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1 cursor-pointer"
+        {/* Column Mapping Section for Currently Selected Sheet */}
+        {currentSheet && (
+          <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3 mt-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h5 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-blue-400" />
+                  Column Mapping: {currentSheet.spreadsheetName} ({currentSheet.sheetName})
+                </h5>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Map the columns in this worksheet to student roll number, name, and certificate types.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSaveMapping(selectedSheetIndex)}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-md shrink-0"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Save Mapping for this Sheet</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              {/* Roll Number Column */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-slate-300 block">
+                  Roll Number Column <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={mappingState.rollNoCol}
+                  onChange={(e) =>
+                    setMappingState((prev) => ({ ...prev, rollNoCol: e.target.value }))
+                  }
+                  className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
                 >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Save Mapping</span>
-                </button>
+                  <option value="">Select column...</option>
+                  {sheetHeaders.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                {/* Roll Number Column */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-300 block">
-                    Roll Number Column <span className="text-red-400">*</span>
-                  </label>
-                  <select
-                    value={mappingState.rollNoCol}
-                    onChange={(e) =>
-                      setMappingState((prev) => ({ ...prev, rollNoCol: e.target.value }))
-                    }
-                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
-                  >
-                    <option value="">Select column...</option>
-                    {sheetHeaders.map((h) => (
-                      <option key={h} value={h}>
-                        {h}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {/* Name Column */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-slate-300 block">
+                  Student Name Column
+                </label>
+                <select
+                  value={mappingState.nameCol}
+                  onChange={(e) =>
+                    setMappingState((prev) => ({ ...prev, nameCol: e.target.value }))
+                  }
+                  className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
+                >
+                  <option value="">Select column...</option>
+                  {sheetHeaders.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                {/* Name Column */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-300 block">
-                    Student Name Column
-                  </label>
-                  <select
-                    value={mappingState.nameCol}
-                    onChange={(e) =>
-                      setMappingState((prev) => ({ ...prev, nameCol: e.target.value }))
-                    }
-                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
-                  >
-                    <option value="">Select column...</option>
-                    {sheetHeaders.map((h) => (
-                      <option key={h} value={h}>
-                        {h}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Certificate Type Column */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-300 block">
-                    Certificate Column
-                  </label>
-                  <select
-                    value={mappingState.certTypeCol}
-                    onChange={(e) =>
-                      setMappingState((prev) => ({ ...prev, certTypeCol: e.target.value }))
-                    }
-                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
-                  >
-                    <option value="">Select column...</option>
-                    {sheetHeaders.map((h) => (
-                      <option key={h} value={h}>
-                        {h}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Certificate URL / Proof Link Column */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-300 block">
-                    Certificate Drive Link / URL (Proof)
-                  </label>
-                  <select
-                    value={mappingState.certUrlCol || ''}
-                    onChange={(e) =>
-                      setMappingState((prev) => ({ ...prev, certUrlCol: e.target.value }))
-                    }
-                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
-                  >
-                    <option value="">Auto-detect URL...</option>
-                    {sheetHeaders.map((h) => (
-                      <option key={h} value={h}>
-                        {h}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Timestamp Column */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-300 block">
-                    Submission Timestamp Column
-                  </label>
-                  <select
-                    value={mappingState.timestampCol || ''}
-                    onChange={(e) =>
-                      setMappingState((prev) => ({ ...prev, timestampCol: e.target.value }))
-                    }
-                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
-                  >
-                    <option value="">Auto-detect Timestamp...</option>
-                    {sheetHeaders.map((h) => (
-                      <option key={h} value={h}>
-                        {h}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {/* Certificate Type Column */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-slate-300 block">
+                  Certificate Column
+                </label>
+                <select
+                  value={mappingState.certTypeCol}
+                  onChange={(e) =>
+                    setMappingState((prev) => ({ ...prev, certTypeCol: e.target.value }))
+                  }
+                  className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
+                >
+                  <option value="">Select column...</option>
+                  {sheetHeaders.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                value={sheetInput}
-                onChange={(e) => setSheetInput(e.target.value)}
-                placeholder="Paste Google Sheet URL (e.g. https://docs.google.com/spreadsheets/d/...) or raw spreadsheet ID"
-                className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
-              />
-              <button
-                onClick={() => handleConnectSheet()}
-                disabled={testingSheet || !sheetInput.trim()}
-                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition shrink-0 cursor-pointer"
-              >
-                {testingSheet ? 'Connecting...' : 'Select Sheet'}
-              </button>
-              <button
-                onClick={handleBrowseSheets}
-                disabled={isLoadingSheets || !accessToken}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl transition shrink-0 cursor-pointer flex items-center gap-1.5"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-                <span>Browse Sheets</span>
-              </button>
-            </div>
-
-            {sheetError && (
-              <div className="p-3 rounded-xl bg-red-950/70 border border-red-800 text-xs text-red-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                  <span>{sheetError}</span>
-                </div>
-                {isAuthExpiredError(sheetError) && (
-                  <button
-                    onClick={onConnectGoogle}
-                    className="px-3 py-1 bg-red-900/80 hover:bg-red-850 text-white font-medium rounded-lg text-xs shrink-0 cursor-pointer border border-red-700"
-                  >
-                    Re-authenticate Now
-                  </button>
-                )}
-              </div>
-            )}
-
-            {isBrowsingSheets && (
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-400 pb-2 border-b border-slate-800">
-                  <span>Available Spreadsheets in Your Drive:</span>
-                  <button
-                    onClick={() => setIsBrowsingSheets(false)}
-                    className="text-slate-500 hover:text-white"
-                  >
-                    Close
-                  </button>
-                </div>
-                {isLoadingSheets ? (
-                  <div className="py-6 text-center text-xs text-slate-500">
-                    Loading spreadsheets...
-                  </div>
-                ) : availableSheets.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-500">
-                    No spreadsheets found in your Google Drive. Try pasting the sheet link above.
-                  </div>
-                ) : (
-                  <div className="max-h-48 overflow-y-auto space-y-1">
-                    {availableSheets.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => handleConnectSheet(s.id)}
-                        className="w-full p-2.5 rounded-xl hover:bg-slate-900 transition flex items-center justify-between text-left text-xs cursor-pointer group"
-                      >
-                        <div className="flex items-center gap-2 text-slate-200 font-medium group-hover:text-white">
-                          <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-                          <span>{s.name}</span>
-                        </div>
-                        <span className="text-[11px] font-mono text-slate-500">
-                          {s.id.slice(0, 8)}...
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -913,6 +1011,7 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={handleSaveRegex}
             className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-lg shadow-purple-600/20 cursor-pointer"
           >
@@ -953,9 +1052,6 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
                 className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-purple-300 placeholder-slate-600 focus:outline-none focus:border-purple-500 font-mono"
               />
             </div>
-            <p className="text-[11px] text-slate-500">
-              Named capture groups supported: <code className="text-purple-300 font-mono">(?&lt;rollNo&gt;...)</code>, <code className="text-purple-300 font-mono">(?&lt;studentName&gt;...)</code>, <code className="text-purple-300 font-mono">(?&lt;certTitle&gt;...)</code>, <code className="text-purple-300 font-mono">(?&lt;certType&gt;...)</code>
-            </p>
           </div>
 
           {/* Quick Presets */}
@@ -967,6 +1063,7 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
               {REGEX_PRESETS.map((preset) => (
                 <button
                   key={preset.name}
+                  type="button"
                   onClick={() => handleApplyPreset(preset.pattern)}
                   className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
                     customRegexInput === preset.pattern
@@ -1028,11 +1125,11 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
                       </span>
                       {liveTestResult.matchedStudent ? (
                         <span className="text-[10px] text-emerald-400 block mt-0.5 font-medium">
-                          ✓ Verified in 67 Roster
+                          ✓ Verified in Roster
                         </span>
                       ) : liveTestResult.parsed?.rollNo ? (
                         <span className="text-[10px] text-amber-400 block mt-0.5">
-                          ⚠ Outside 67 Roster
+                          ⚠ Outside Roster
                         </span>
                       ) : null}
                     </div>
@@ -1079,76 +1176,6 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
             )}
           </div>
         </div>
-
-        {/* Advanced Checking Engine Toggles */}
-        <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            Advanced Checking &amp; Fallback Rules
-          </h4>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-            {/* Fuzzy Name Matching */}
-            <label className="flex items-start gap-3 p-3 bg-slate-900 border border-slate-800 rounded-xl cursor-pointer hover:border-slate-700 transition">
-              <input
-                type="checkbox"
-                checked={settings.enableFuzzyNameMatching ?? true}
-                onChange={(e) =>
-                  onUpdateSettings({ enableFuzzyNameMatching: e.target.checked })
-                }
-                className="w-4 h-4 mt-0.5 rounded text-purple-600 bg-slate-950 border-slate-700 cursor-pointer"
-              />
-              <div className="space-y-0.5">
-                <span className="text-xs font-bold text-white block">
-                  Student Name Matching
-                </span>
-                <p className="text-[11px] text-slate-400">
-                  Matches student names from the 67 roster in filenames even if roll number is missing.
-                </p>
-              </div>
-            </label>
-
-            {/* Subfolder Name Inheritance */}
-            <label className="flex items-start gap-3 p-3 bg-slate-900 border border-slate-800 rounded-xl cursor-pointer hover:border-slate-700 transition">
-              <input
-                type="checkbox"
-                checked={settings.enableParentFolderInheritance ?? true}
-                onChange={(e) =>
-                  onUpdateSettings({ enableParentFolderInheritance: e.target.checked })
-                }
-                className="w-4 h-4 mt-0.5 rounded text-purple-600 bg-slate-950 border-slate-700 cursor-pointer"
-              />
-              <div className="space-y-0.5">
-                <span className="text-xs font-bold text-white block">
-                  Subfolder Inheritance
-                </span>
-                <p className="text-[11px] text-slate-400">
-                  Files inside subfolders named with roll numbers automatically inherit student identity.
-                </p>
-              </div>
-            </label>
-
-            {/* Sheet Link Matching */}
-            <label className="flex items-start gap-3 p-3 bg-slate-900 border border-slate-800 rounded-xl cursor-pointer hover:border-slate-700 transition">
-              <input
-                type="checkbox"
-                checked={settings.enableSheetLinkMatching ?? true}
-                onChange={(e) =>
-                  onUpdateSettings({ enableSheetLinkMatching: e.target.checked })
-                }
-                className="w-4 h-4 mt-0.5 rounded text-purple-600 bg-slate-950 border-slate-700 cursor-pointer"
-              />
-              <div className="space-y-0.5">
-                <span className="text-xs font-bold text-white block">
-                  Sheet URL Cross-Reference
-                </span>
-                <p className="text-[11px] text-slate-400">
-                  Directly links Google Drive files to students when referenced in Google Sheet response links.
-                </p>
-              </div>
-            </label>
-          </div>
-        </div>
       </div>
 
       {/* 5. Synchronization & Security Preferences */}
@@ -1182,12 +1209,9 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
                 <option value={60}>Every 1 hour</option>
               </select>
             </div>
-            <p className="text-[11px] text-slate-500 pt-1">
-              Note: Respects Google API quotas using efficient batch queries and timestamps.
-            </p>
           </div>
 
-          {/* Spreadsheet Write Mode Toggle (Section 38) */}
+          {/* Spreadsheet Write Mode Toggle */}
           <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-2">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold text-white uppercase tracking-wider">
@@ -1204,7 +1228,7 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              By default, synchronization is 100% READ-ONLY. When enabled, you can explicitly authorize writing missing rows to the spreadsheet with a confirmation preview.
+              By default, synchronization is 100% READ-ONLY. When enabled, you can explicitly authorize writing missing rows.
             </p>
             <div className="pt-2 flex items-center justify-between">
               <label className="text-xs text-slate-300 font-medium">
@@ -1223,6 +1247,7 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
         {/* Supabase & Google OAuth Client for Standalone Outside AI Studio Deployments */}
         <SupabaseGoogleOutsideConfigCard
           userEmail={userEmail}
+          onToast={onToast}
           onGoogleTokenReceived={(token) => {
             if (token) {
               onTriggerSync();
@@ -1230,7 +1255,7 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
           }}
         />
 
-        {/* Administrator Allowlist (Section 28) */}
+        {/* Administrator Allowlist */}
         <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
@@ -1239,7 +1264,7 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
                 Administrator Allowlist
               </h4>
               <p className="text-xs text-slate-400 mt-0.5">
-                Only authenticated Google accounts on this list are granted access. All other accounts receive an ACCESS DENIED response.
+                Only authenticated Google accounts on this list are granted access.
               </p>
             </div>
           </div>
@@ -1253,8 +1278,9 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
                 <span className="text-slate-200">{email}</span>
                 {settings.adminEmails.length > 1 && email !== 'jayaramsappa09@gmail.com' && (
                   <button
+                    type="button"
                     onClick={() => handleRemoveAdminEmail(email)}
-                    className="p-1 text-slate-500 hover:text-red-400 transition"
+                    className="p-1 text-slate-500 hover:text-red-400 transition cursor-pointer"
                     title="Remove admin"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1273,6 +1299,7 @@ export const GoogleIntegrationTab: React.FC<GoogleIntegrationTabProps> = ({
               className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 placeholder-slate-500"
             />
             <button
+              type="button"
               onClick={handleAddAdminEmail}
               className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl transition flex items-center gap-1 cursor-pointer"
             >
