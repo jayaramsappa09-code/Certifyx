@@ -627,3 +627,17 @@ export async function listUploadedCertificatesForStudent(
   }
 }
 
+/**
+ * Delete student status from Supabase database 'student_statuses' table
+ */
+export async function deleteStudentStatusFromSupabase(rollNo: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) return;
+  try {
+    const cleanRollNo = rollNo.toUpperCase().trim();
+    await client.from('student_statuses').delete().eq('roll_no', cleanRollNo);
+  } catch (err) {
+    console.warn('Failed to delete student status from Supabase:', err);
+  }
+}
+

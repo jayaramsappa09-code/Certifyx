@@ -54,6 +54,7 @@ import {
   fetchStudentStatusesFromSupabase,
   saveStudentStatusesToSupabase,
   flushPendingStudentStatusBroadcasts,
+  deleteStudentStatusFromSupabase,
 } from './services/supabaseClient';
 import { runSyncEngine, SyncEngineResult } from './services/syncEngine';
 import {
@@ -275,6 +276,44 @@ export default function App() {
   const [showPendingUpdatesModal, setShowPendingUpdatesModal] = useState(false);
   const [isSyncingPending, setIsSyncingPending] = useState(false);
 
+  const applySyncResult = (result: SyncEngineResult) => {
+    setStudentStatuses(result.studentStatuses);
+    setUnidentifiedFiles(result.unidentifiedFiles);
+    setOutsideClassFiles(result.outsideClassFiles);
+    setDuplicateFiles(result.duplicateFiles);
+    setAmbiguousCertFiles(result.ambiguousCertFiles);
+    setLastSyncReport(result.report);
+    setSyncHistory(getSyncHistory());
+    setAuditLogs(getAuditLogs());
+
+    // Batch upsert synchronized results to Supabase for real-time sharing
+    saveStudentStatusesToSupabase(
+      result.studentStatuses.map((s) => ({
+        rollNo: s.rollNo,
+        name: s.name,
+        driveUploaded: s.driveUploaded,
+        sheetUpdated: s.sheetUpdated,
+        submitted: s.submitted,
+        overallStatus: s.overallStatus,
+        updatedBy: currentUser?.email || 'admin',
+        updatedAt: new Date().toISOString(),
+      }))
+    );
+  };
+
+  const refreshLocalSync = useCallback(() => {
+    const cached = getCachedSyncedData();
+    const driveFiles = cached?.driveFiles || [];
+    const sheetRows = cached?.sheetRows || [];
+    const syncResult = runSyncEngine({
+      driveFiles,
+      sheetRows,
+      userEmail: currentUser?.email || 'admin',
+      useSeedDataIfEmpty: driveFiles.length === 0 && sheetRows.length === 0,
+    });
+    applySyncResult(syncResult);
+  }, [currentUser]);
+
   // Reference for auto-sync timer and post-auth pending actions
   const autoSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingPostAuthActionRef = useRef<(() => void) | null>(null);
@@ -348,6 +387,23 @@ export default function App() {
       try {
         const supaStatuses = await fetchStudentStatusesFromSupabase();
         if (supaStatuses && supaStatuses.length > 0) {
+          // 1. Dynamically sync new students from Supabase to FIXED_CLASS_ROSTER roster first!
+          let rosterChanged = false;
+          supaStatuses.forEach((ss) => {
+            const cleanRoll = ss.rollNo.toUpperCase().trim();
+            const exists = FIXED_CLASS_ROSTER.some(
+              (r) => r.rollNo.toUpperCase().trim() === cleanRoll
+            );
+            if (!exists && ss.name) {
+              addRosterStudent({ rollNo: cleanRoll, name: ss.name });
+              rosterChanged = true;
+            }
+          });
+
+          if (rosterChanged) {
+            refreshLocalSync();
+          }
+
           setStudentStatuses((prev) =>
             prev.map((s) => {
               const matched = supaStatuses.find((ss) => ss.rollNo === s.rollNo);
@@ -371,7 +427,7 @@ export default function App() {
       }
     }
     loadFromSupabase();
-  }, [currentUser]);
+  }, [currentUser, refreshLocalSync]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setGlobalBanner({ message, type });
@@ -968,31 +1024,6 @@ export default function App() {
     showToast(`Row #${rowIndex} assigned to student ${assignedRollNo}!`, 'success');
   };
 
-  const applySyncResult = (result: SyncEngineResult) => {
-    setStudentStatuses(result.studentStatuses);
-    setUnidentifiedFiles(result.unidentifiedFiles);
-    setOutsideClassFiles(result.outsideClassFiles);
-    setDuplicateFiles(result.duplicateFiles);
-    setAmbiguousCertFiles(result.ambiguousCertFiles);
-    setLastSyncReport(result.report);
-    setSyncHistory(getSyncHistory());
-    setAuditLogs(getAuditLogs());
-
-    // Batch upsert synchronized results to Supabase for real-time sharing
-    saveStudentStatusesToSupabase(
-      result.studentStatuses.map((s) => ({
-        rollNo: s.rollNo,
-        name: s.name,
-        driveUploaded: s.driveUploaded,
-        sheetUpdated: s.sheetUpdated,
-        submitted: s.submitted,
-        overallStatus: s.overallStatus,
-        updatedBy: currentUser?.email || 'admin',
-        updatedAt: new Date().toISOString(),
-      }))
-    );
-  };
-
   const handleConfirmFirstSync = () => {
     if (pendingFirstSyncResult) {
       applySyncResult(pendingFirstSyncResult);
@@ -1056,24 +1087,26 @@ export default function App() {
     });
   };
 
-  const refreshLocalSync = useCallback(() => {
-    const cached = getCachedSyncedData();
-    const driveFiles = cached?.driveFiles || [];
-    const sheetRows = cached?.sheetRows || [];
-    const syncResult = runSyncEngine({
-      driveFiles,
-      sheetRows,
-      userEmail: currentUser?.email || 'admin',
-      useSeedDataIfEmpty: driveFiles.length === 0 && sheetRows.length === 0,
-    });
-    applySyncResult(syncResult);
-  }, [currentUser]);
-
   const handleAddRosterStudent = useCallback((rollNo: string, name: string) => {
     try {
-      addRosterStudent({ rollNo: rollNo.toUpperCase().trim(), name: name.trim() });
-      addAuditLog('Roster Student Added', currentUser?.email || 'admin', `Added student ${name} (${rollNo})`, 'SETTINGS');
-      showToast(`Successfully added student ${name} to roster!`, 'success');
+      const cleanRoll = rollNo.toUpperCase().trim();
+      const cleanName = name.trim();
+      addRosterStudent({ rollNo: cleanRoll, name: cleanName });
+      
+      // Permanently write to Supabase database so other administrators see them!
+      saveStudentStatusesToSupabase([{
+        rollNo: cleanRoll,
+        name: cleanName,
+        driveUploaded: false,
+        sheetUpdated: false,
+        submitted: false,
+        overallStatus: 'NOT STARTED',
+        updatedBy: currentUser?.email || 'admin',
+        updatedAt: new Date().toISOString(),
+      }]);
+
+      addAuditLog('Roster Student Added', currentUser?.email || 'admin', `Added student ${cleanName} (${cleanRoll})`, 'SETTINGS');
+      showToast(`Successfully added student ${cleanName} to roster!`, 'success');
       refreshLocalSync();
     } catch (e: any) {
       showToast(e.message || 'Failed to add student.', 'error');
@@ -1082,20 +1115,44 @@ export default function App() {
 
   const handleEditRosterStudent = useCallback((rollNo: string, newName: string) => {
     try {
-      editRosterStudent(rollNo, newName);
-      addAuditLog('Roster Student Edited', currentUser?.email || 'admin', `Renamed student ${rollNo} to ${newName}`, 'SETTINGS');
-      showToast(`Successfully renamed student to ${newName}!`, 'success');
+      const cleanRoll = rollNo.toUpperCase().trim();
+      const cleanName = newName.trim();
+      editRosterStudent(cleanRoll, cleanName);
+
+      // Permanently update in Supabase database as well!
+      setStudentStatuses((prev) => {
+        const currentStudentStatus = prev.find(s => s.rollNo === cleanRoll);
+        saveStudentStatusesToSupabase([{
+          rollNo: cleanRoll,
+          name: cleanName,
+          driveUploaded: currentStudentStatus?.driveUploaded ?? false,
+          sheetUpdated: currentStudentStatus?.sheetUpdated ?? false,
+          submitted: currentStudentStatus?.submitted ?? false,
+          overallStatus: currentStudentStatus?.overallStatus ?? 'NOT STARTED',
+          updatedBy: currentUser?.email || 'admin',
+          updatedAt: new Date().toISOString(),
+        }]);
+        return prev;
+      });
+
+      addAuditLog('Roster Student Edited', currentUser?.email || 'admin', `Renamed student ${cleanRoll} to ${cleanName}`, 'SETTINGS');
+      showToast(`Successfully renamed student to ${cleanName}!`, 'success');
       refreshLocalSync();
     } catch (e: any) {
       showToast(e.message || 'Failed to rename student.', 'error');
     }
-  }, [currentUser, refreshLocalSync]);
+  }, [currentUser, refreshLocalSync, studentStatuses]);
 
   const handleDeleteRosterStudent = useCallback((rollNo: string) => {
     try {
-      deleteRosterStudent(rollNo);
-      addAuditLog('Roster Student Deleted', currentUser?.email || 'admin', `Deleted student ${rollNo}`, 'SETTINGS');
-      showToast(`Successfully deleted student ${rollNo} from roster!`, 'success');
+      const cleanRoll = rollNo.toUpperCase().trim();
+      deleteRosterStudent(cleanRoll);
+
+      // Permanently remove from Supabase database as well!
+      deleteStudentStatusFromSupabase(cleanRoll);
+
+      addAuditLog('Roster Student Deleted', currentUser?.email || 'admin', `Deleted student ${cleanRoll}`, 'SETTINGS');
+      showToast(`Successfully deleted student ${cleanRoll} from roster!`, 'success');
       refreshLocalSync();
     } catch (e: any) {
       showToast(e.message || 'Failed to delete student.', 'error');
