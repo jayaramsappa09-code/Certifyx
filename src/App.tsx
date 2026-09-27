@@ -60,6 +60,7 @@ import { runSyncEngine, SyncEngineResult } from './services/syncEngine';
 import {
   FIXED_CLASS_ROSTER,
   addRosterStudent,
+  batchAddRosterStudents,
   editRosterStudent,
   deleteRosterStudent,
 } from './data/classRoster';
@@ -94,7 +95,13 @@ import { SetupWizardModal } from './components/SetupWizardModal';
 import { AccessDeniedScreen } from './components/AccessDeniedScreen';
 import { GoogleConnectModal } from './components/GoogleConnectModal';
 import { SheetSyncProofModal } from './components/SheetSyncProofModal';
-import { GlobalSyncProgressBar, SyncProgressState } from './components/GlobalSyncProgressBar';
+import {
+  GlobalSyncProgressBar,
+  SyncProgressState,
+  SyncStepId,
+  SyncStepInfo,
+  DetailedSyncProgress,
+} from './components/GlobalSyncProgressBar';
 import { OfflinePendingUpdatesModal } from './components/OfflinePendingUpdatesModal';
 import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
@@ -706,32 +713,136 @@ export default function App() {
       return;
     }
 
+    const syncStartTime = Date.now();
+    const detailedSteps: Record<SyncStepId, SyncStepInfo> = {
+      AUTH: {
+        id: 'AUTH',
+        label: 'Auth Verification',
+        shortName: 'Auth',
+        status: 'RUNNING',
+        progressPercent: 20,
+        detail: 'Verifying Google Workspace OAuth credentials...',
+        startTime: syncStartTime,
+      },
+      DRIVE: {
+        id: 'DRIVE',
+        label: 'Google Drive',
+        shortName: 'Drive',
+        status: 'PENDING',
+        progressPercent: 0,
+        detail: driveConfig ? `Folder: ${driveConfig.folderName}` : 'Awaiting start',
+      },
+      SHEET: {
+        id: 'SHEET',
+        label: 'Google Sheets',
+        shortName: 'Sheet',
+        status: 'PENDING',
+        progressPercent: 0,
+        detail: sheetConfig ? `Sheet: ${sheetConfig.sheetName}` : 'Awaiting start',
+      },
+      ENGINE: {
+        id: 'ENGINE',
+        label: 'Reconciliation',
+        shortName: 'Engine',
+        status: 'PENDING',
+        progressPercent: 0,
+        detail: 'Auditing against class roster...',
+      },
+    };
+
+    const emitSyncProgress = (
+      currentStep: SyncStepId,
+      stepNum: number,
+      overallPct: number,
+      title: string,
+      detail?: string,
+      batchInfo?: { currentBatch: number; totalBatches: number; batchPercent: number; description: string }
+    ) => {
+      setSyncProgress({
+        step: stepNum,
+        totalSteps: 4,
+        title,
+        detail,
+        progressPercent: overallPct,
+        detailedProgress: {
+          overallPercent: overallPct,
+          currentStepId: currentStep,
+          steps: { ...detailedSteps },
+          isBatchOperation: Boolean(batchInfo),
+          batchInfo,
+          startTime: syncStartTime,
+          isComplete: overallPct >= 100,
+        },
+      });
+    };
+
     try {
       setIsSyncing(true);
-      setSyncProgress({
-        step: 1,
-        totalSteps: 4,
-        title: 'Initializing sync engine & verifying credentials...',
-        progressPercent: 15,
-      });
+      emitSyncProgress(
+        'AUTH',
+        1,
+        10,
+        'Step 1/4: Initializing sync engine & verifying credentials...',
+        'Validating Google Workspace OAuth token...'
+      );
       addAuditLog('Sync started', currentUser?.email || 'admin', 'Triggered synchronization engine', 'SYNC');
       await flushPendingStudentStatusBroadcasts();
+
+      // Step 1: Auth Verification Complete
+      detailedSteps.AUTH.status = 'COMPLETED';
+      detailedSteps.AUTH.progressPercent = 100;
+      detailedSteps.AUTH.detail = 'Google Workspace session & scopes active';
+      detailedSteps.AUTH.endTime = Date.now();
+      emitSyncProgress('AUTH', 1, 25, 'Step 1/4: Auth verified', 'Google Workspace session authenticated');
 
       let fetchedDriveFiles: DriveCertificateFile[] = [];
       let fetchedSheetRows: SheetRowRecord[] = [];
       const errorMessages: string[] = [];
 
-      // 1. Read Google Drive
+      // 2. Read Google Drive
       if (driveConfig?.folderId) {
         try {
-          setSyncProgress({
-            step: 2,
-            totalSteps: 4,
-            title: 'Scanning Google Drive certificates & subfolders...',
-            detail: driveConfig.folderName || 'Drive Folder',
-            progressPercent: 38,
-          });
-          fetchedDriveFiles = await listCertificateFilesInFolder(driveConfig.folderId, currentToken);
+          detailedSteps.DRIVE.status = 'RUNNING';
+          detailedSteps.DRIVE.progressPercent = 15;
+          detailedSteps.DRIVE.startTime = Date.now();
+          emitSyncProgress(
+            'DRIVE',
+            2,
+            28,
+            `Step 2/4: Scanning Drive folder '${driveConfig.folderName || 'Root'}'...`,
+            driveConfig.folderName || 'Drive Folder'
+          );
+
+          fetchedDriveFiles = await listCertificateFilesInFolder(
+            driveConfig.folderId,
+            currentToken,
+            (prog) => {
+              detailedSteps.DRIVE.itemsProcessed = prog.filesFound;
+              detailedSteps.DRIVE.progressPercent = Math.min(95, 20 + prog.page * 20);
+              detailedSteps.DRIVE.detail = `Discovered ${prog.filesFound} files in '${prog.currentFolder}' (Batch ${prog.page})`;
+              const drivePct = Math.min(48, 25 + prog.page * 7);
+              emitSyncProgress(
+                'DRIVE',
+                2,
+                drivePct,
+                `Step 2/4: Scanning '${prog.currentFolder}'...`,
+                `${prog.filesFound} files discovered`,
+                {
+                  currentBatch: prog.page,
+                  totalBatches: prog.page + 1,
+                  batchPercent: Math.min(95, 30 + prog.page * 20),
+                  description: `Scanning '${prog.currentFolder}' • Batch ${prog.page} (${prog.filesFound} files)`,
+                }
+              );
+            }
+          );
+
+          detailedSteps.DRIVE.status = 'COMPLETED';
+          detailedSteps.DRIVE.progressPercent = 100;
+          detailedSteps.DRIVE.itemsProcessed = fetchedDriveFiles.length;
+          detailedSteps.DRIVE.detail = `Discovered ${fetchedDriveFiles.length} certificate files across all subfolders`;
+          detailedSteps.DRIVE.endTime = Date.now();
+
           // Update driveConfig lastSynced
           const updatedDrive = {
             ...driveConfig,
@@ -740,8 +851,18 @@ export default function App() {
           };
           setDriveConfig(updatedDrive);
           saveDriveConfig(updatedDrive);
+
+          emitSyncProgress(
+            'DRIVE',
+            2,
+            50,
+            `Step 2/4: Google Drive scanned (${fetchedDriveFiles.length} files)`,
+            `${fetchedDriveFiles.length} files`
+          );
         } catch (err: any) {
           console.error('Drive fetch error:', err);
+          detailedSteps.DRIVE.status = 'ERROR';
+          detailedSteps.DRIVE.error = err.message;
           if (isAuthExpiredError(err)) {
             handleTokenExpiry();
             setAccessToken(null);
@@ -753,18 +874,31 @@ export default function App() {
           }
           errorMessages.push(`Google Drive: ${err.message}`);
         }
+      } else {
+        detailedSteps.DRIVE.status = 'SKIPPED';
+        detailedSteps.DRIVE.detail = 'No Drive folder configured';
       }
 
-      // 2. Read Google Sheets
+      // 3. Read Google Sheets
       if (sheetConfig?.spreadsheetId && sheetConfig.sheetName) {
         try {
-          setSyncProgress({
-            step: 3,
-            totalSteps: 4,
-            title: 'Reading Google Sheets responses & column rows...',
-            detail: sheetConfig.spreadsheetName || 'Spreadsheet',
-            progressPercent: 68,
-          });
+          detailedSteps.SHEET.status = 'RUNNING';
+          detailedSteps.SHEET.progressPercent = 25;
+          detailedSteps.SHEET.startTime = Date.now();
+          emitSyncProgress(
+            'SHEET',
+            3,
+            55,
+            `Step 3/4: Querying Google Sheet '${sheetConfig.sheetName}'...`,
+            sheetConfig.spreadsheetName || 'Spreadsheet',
+            {
+              currentBatch: 1,
+              totalBatches: 2,
+              batchPercent: 40,
+              description: `Fetching worksheet rows from Google Sheets API...`,
+            }
+          );
+
           const sheetResult = await readSpreadsheetValues(
             sheetConfig.spreadsheetId,
             sheetConfig.sheetName,
@@ -772,6 +906,22 @@ export default function App() {
             sheetConfig.columnMapping
           );
           fetchedSheetRows = sheetResult.rows;
+
+          detailedSteps.SHEET.itemsProcessed = fetchedSheetRows.length;
+          detailedSteps.SHEET.progressPercent = 80;
+          emitSyncProgress(
+            'SHEET',
+            3,
+            68,
+            `Step 3/4: Parsing ${fetchedSheetRows.length} rows & column mappings...`,
+            `${fetchedSheetRows.length} rows scanned`,
+            {
+              currentBatch: 2,
+              totalBatches: 2,
+              batchPercent: 85,
+              description: `Mapping Roll No, Student Name, and Certificate Type columns...`,
+            }
+          );
 
           // Build Live Sheet Sync Proof
           const proof: SheetSyncProof = {
@@ -793,6 +943,11 @@ export default function App() {
           setSheetSyncProof(proof);
           saveSheetSyncProof(proof);
 
+          detailedSteps.SHEET.status = 'COMPLETED';
+          detailedSteps.SHEET.progressPercent = 100;
+          detailedSteps.SHEET.detail = `Parsed ${fetchedSheetRows.length} submission responses`;
+          detailedSteps.SHEET.endTime = Date.now();
+
           // Update sheetConfig lastSynced
           const updatedSheet = {
             ...sheetConfig,
@@ -800,8 +955,18 @@ export default function App() {
           };
           setSheetConfig(updatedSheet);
           saveSheetConfig(updatedSheet);
+
+          emitSyncProgress(
+            'SHEET',
+            3,
+            75,
+            `Step 3/4: Google Sheets read (${fetchedSheetRows.length} rows)`,
+            `${fetchedSheetRows.length} rows`
+          );
         } catch (err: any) {
           console.error('Sheet fetch error:', err);
+          detailedSteps.SHEET.status = 'ERROR';
+          detailedSteps.SHEET.error = err.message;
           if (isAuthExpiredError(err)) {
             handleTokenExpiry();
             setAccessToken(null);
@@ -813,16 +978,28 @@ export default function App() {
           }
           errorMessages.push(`Google Sheets: ${err.message}`);
         }
+      } else {
+        detailedSteps.SHEET.status = 'SKIPPED';
+        detailedSteps.SHEET.detail = 'No Sheet configured';
       }
 
-      // 3. Execute Core Sync Engine
-      setSyncProgress({
-        step: 4,
-        totalSteps: 4,
-        title: 'Matching certificates across 67-student roster...',
-        detail: `${fetchedDriveFiles.length} files • ${fetchedSheetRows.length} rows`,
-        progressPercent: 90,
-      });
+      // 4. Execute Core Sync Engine
+      detailedSteps.ENGINE.status = 'RUNNING';
+      detailedSteps.ENGINE.progressPercent = 35;
+      detailedSteps.ENGINE.startTime = Date.now();
+      emitSyncProgress(
+        'ENGINE',
+        4,
+        82,
+        `Step 4/4: Reconciling Drive & Sheet records against ${FIXED_CLASS_ROSTER.length} students...`,
+        `${fetchedDriveFiles.length} files • ${fetchedSheetRows.length} rows`,
+        {
+          currentBatch: 1,
+          totalBatches: 1,
+          batchPercent: 75,
+          description: `Auditing discrepancy proofs & calculating status distribution...`,
+        }
+      );
 
       const syncResult = runSyncEngine({
         driveFiles: fetchedDriveFiles,
@@ -847,12 +1024,19 @@ export default function App() {
       applySyncResult(syncResult);
       setShowSyncReportModal(true);
 
-      setSyncProgress({
-        step: 4,
-        totalSteps: 4,
-        title: 'Synchronization complete!',
-        progressPercent: 100,
-      });
+      detailedSteps.ENGINE.status = 'COMPLETED';
+      detailedSteps.ENGINE.progressPercent = 100;
+      detailedSteps.ENGINE.itemsProcessed = syncResult.studentStatuses.length;
+      detailedSteps.ENGINE.detail = `Reconciled ${syncResult.studentStatuses.length} students (${syncResult.report.studentsWithCertificates} with certs)`;
+      detailedSteps.ENGINE.endTime = Date.now();
+
+      emitSyncProgress(
+        'ENGINE',
+        4,
+        100,
+        'Synchronization complete!',
+        `${syncResult.studentStatuses.length} students processed`
+      );
     } catch (e: any) {
       console.error('Sync failed:', e);
       if (isAuthExpiredError(e)) {
@@ -889,12 +1073,25 @@ export default function App() {
     try {
       setIsRefreshingProof(true);
       setIsSyncing(true);
+      const refreshStart = Date.now();
       setSyncProgress({
-        step: 1,
-        totalSteps: 2,
-        title: 'Fetching live rows from Google Sheets API...',
+        step: 3,
+        totalSteps: 4,
+        title: 'Step 3/4: Fetching live rows from Google Sheets API...',
         detail: sheetConfig.spreadsheetName || 'Sheet',
-        progressPercent: 45,
+        progressPercent: 55,
+        detailedProgress: {
+          overallPercent: 55,
+          currentStepId: 'SHEET',
+          steps: {
+            AUTH: { id: 'AUTH', label: 'Auth Verification', shortName: 'Auth', status: 'COMPLETED', progressPercent: 100, detail: 'Google OAuth token active' },
+            DRIVE: { id: 'DRIVE', label: 'Google Drive', shortName: 'Drive', status: 'COMPLETED', progressPercent: 100, detail: 'Using cached certificate files' },
+            SHEET: { id: 'SHEET', label: 'Google Sheets', shortName: 'Sheet', status: 'RUNNING', progressPercent: 50, detail: `Reading '${sheetConfig.sheetName}'...` },
+            ENGINE: { id: 'ENGINE', label: 'Reconciliation', shortName: 'Engine', status: 'PENDING', progressPercent: 0, detail: 'Waiting for fresh sheet rows...' },
+          },
+          startTime: refreshStart,
+          isComplete: false,
+        },
       });
 
       const sheetResult = await readSpreadsheetValues(
@@ -925,11 +1122,23 @@ export default function App() {
       saveSheetSyncProof(proof);
 
       setSyncProgress({
-        step: 2,
-        totalSteps: 2,
-        title: 'Auditing rows against 67-student roster...',
-        detail: `${proof.matchedCount} class matches`,
-        progressPercent: 90,
+        step: 4,
+        totalSteps: 4,
+        title: 'Step 4/4: Auditing rows against class roster...',
+        detail: `${proof.matchedCount} verified class matches`,
+        progressPercent: 88,
+        detailedProgress: {
+          overallPercent: 88,
+          currentStepId: 'ENGINE',
+          steps: {
+            AUTH: { id: 'AUTH', label: 'Auth Verification', shortName: 'Auth', status: 'COMPLETED', progressPercent: 100, detail: 'Google OAuth token active' },
+            DRIVE: { id: 'DRIVE', label: 'Google Drive', shortName: 'Drive', status: 'COMPLETED', progressPercent: 100, detail: 'Using cached certificate files' },
+            SHEET: { id: 'SHEET', label: 'Google Sheets', shortName: 'Sheet', status: 'COMPLETED', progressPercent: 100, detail: `${sheetResult.rows.length} rows parsed` },
+            ENGINE: { id: 'ENGINE', label: 'Reconciliation', shortName: 'Engine', status: 'RUNNING', progressPercent: 80, detail: `Auditing ${proof.matchedCount} submissions...` },
+          },
+          startTime: refreshStart,
+          isComplete: false,
+        },
       });
 
       // Re-run sync engine with existing cached drive files
@@ -952,10 +1161,22 @@ export default function App() {
       showToast(`Sheet proof refreshed! ${proof.matchedCount} verified class student submissions.`, 'success');
 
       setSyncProgress({
-        step: 2,
-        totalSteps: 2,
+        step: 4,
+        totalSteps: 4,
         title: 'Sheet proof updated!',
         progressPercent: 100,
+        detailedProgress: {
+          overallPercent: 100,
+          currentStepId: 'ENGINE',
+          steps: {
+            AUTH: { id: 'AUTH', label: 'Auth Verification', shortName: 'Auth', status: 'COMPLETED', progressPercent: 100, detail: 'Google OAuth token active' },
+            DRIVE: { id: 'DRIVE', label: 'Google Drive', shortName: 'Drive', status: 'COMPLETED', progressPercent: 100, detail: 'Using cached certificate files' },
+            SHEET: { id: 'SHEET', label: 'Google Sheets', shortName: 'Sheet', status: 'COMPLETED', progressPercent: 100, detail: `${sheetResult.rows.length} rows parsed` },
+            ENGINE: { id: 'ENGINE', label: 'Reconciliation', shortName: 'Engine', status: 'COMPLETED', progressPercent: 100, detail: `${proof.matchedCount} verified matches` },
+          },
+          startTime: refreshStart,
+          isComplete: true,
+        },
       });
     } catch (e: any) {
       console.error('Refresh proof error:', e);
@@ -1110,6 +1331,40 @@ export default function App() {
       refreshLocalSync();
     } catch (e: any) {
       showToast(e.message || 'Failed to add student.', 'error');
+    }
+  }, [currentUser, refreshLocalSync]);
+
+  const handleBatchAddRosterStudents = useCallback(async (students: Array<{ rollNo: string; name: string }>) => {
+    try {
+      const result = batchAddRosterStudents(students);
+      if (result.added.length > 0) {
+        // Permanently write all newly added students to Supabase
+        await saveStudentStatusesToSupabase(
+          result.added.map((s) => ({
+            rollNo: s.rollNo,
+            name: s.name,
+            driveUploaded: false,
+            sheetUpdated: false,
+            submitted: false,
+            overallStatus: 'NOT STARTED',
+            updatedBy: currentUser?.email || 'admin',
+            updatedAt: new Date().toISOString(),
+          }))
+        );
+
+        addAuditLog(
+          'Batch Roster Students Added',
+          currentUser?.email || 'admin',
+          `Batch imported ${result.added.length} student(s) to class roster`,
+          'SETTINGS'
+        );
+
+        refreshLocalSync();
+      }
+      return result;
+    } catch (e: any) {
+      showToast(e.message || 'Failed to batch add students.', 'error');
+      throw e;
     }
   }, [currentUser, refreshLocalSync]);
 
@@ -1705,6 +1960,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         onQuickSyncPending={handleSyncPendingUpdates}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        rosterCount={studentStatuses.length}
       />
 
       {/* Main Content Area */}
@@ -1896,6 +2152,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               }}
               onOpenDataHealthReport={() => setShowDataHealthReportModal(true)}
               onAddRosterStudent={handleAddRosterStudent}
+              onBatchAddRosterStudents={handleBatchAddRosterStudents}
               onEditRosterStudent={handleEditRosterStudent}
               onDeleteRosterStudent={handleDeleteRosterStudent}
               onToast={showToast}

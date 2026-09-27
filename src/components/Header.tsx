@@ -41,6 +41,7 @@ interface HeaderProps {
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
   onOpenDataHealthReport?: () => void;
+  rosterCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -64,6 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
   theme = 'dark',
   onToggleTheme,
   onOpenDataHealthReport,
+  rosterCount,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white">
@@ -80,7 +82,7 @@ export const Header: React.FC<HeaderProps> = ({
                 Class Certificate Automation Manager
               </h1>
               <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-950/80 text-blue-400 border border-blue-800">
-                67 Roster
+                {rosterCount ? `${rosterCount} Roster` : '67 Roster'}
               </span>
             </div>
             <p className="text-xs text-slate-400 hidden sm:block">
@@ -231,7 +233,7 @@ export const Header: React.FC<HeaderProps> = ({
           onChange={(e) => setActiveTab(e.target.value as any)}
           className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-semibold text-slate-100 focus:outline-none focus:border-blue-500"
         >
-          <option value="dashboard">📊 Dashboard &amp; Class Roster (67)</option>
+          <option value="dashboard">📊 Dashboard &amp; Class Roster ({rosterCount || 67})</option>
           <option value="review">⚠️ Needs Review ({reviewCount})</option>
           <option value="integration">📂 Google Integration (Drive &amp; Sheets)</option>
           <option value="history">⏱️ Sync History</option>
@@ -252,7 +254,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <FolderSync className="w-4 h-4" />
-          <span>Dashboard &amp; Class Roster</span>
+          <span>Dashboard &amp; Class Roster {rosterCount ? `(${rosterCount})` : ''}</span>
         </button>
 
         <button

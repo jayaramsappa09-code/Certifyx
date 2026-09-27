@@ -225,7 +225,8 @@ export async function searchAllDriveFiles(
  */
 export async function listCertificateFilesInFolder(
   folderId: string,
-  accessToken: string
+  accessToken: string,
+  onProgress?: (progress: { filesFound: number; currentFolder: string; page: number }) => void
 ): Promise<DriveCertificateFile[]> {
   const files: DriveCertificateFile[] = [];
   const visitedFolders = new Set<string>();
@@ -330,6 +331,13 @@ export async function listCertificateFilesInFolder(
       }
 
       pageToken = data.nextPageToken || null;
+      if (onProgress) {
+        onProgress({
+          filesFound: files.length,
+          currentFolder: current.name,
+          page: visitedFolders.size,
+        });
+      }
     } while (pageToken);
   }
 

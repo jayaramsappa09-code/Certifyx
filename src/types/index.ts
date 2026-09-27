@@ -10,6 +10,7 @@ export interface Student {
   rollNo: string;
   name: string;
   phone?: string;
+  email?: string;
 }
 
 export interface DriveCertificateFile {

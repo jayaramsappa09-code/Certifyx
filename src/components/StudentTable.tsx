@@ -34,6 +34,9 @@ import {
   Mail,
   Calendar,
   AlertTriangle,
+  Users,
+  ArrowRight,
+  Database,
 } from 'lucide-react';
 import {
   StudentStatusRecord,
@@ -45,6 +48,8 @@ import {
 import { isStudentMatchingDateRange, getLatestStudentActivity } from '../utils/dateFilterUtils';
 import { DataMismatchSection } from './DataMismatchSection';
 import { DiscrepancyProofCard } from './DiscrepancyProofCard';
+import { BatchImportStudentsModal } from './BatchImportStudentsModal';
+import { RosterManagementModal } from './RosterManagementModal';
 
 interface StudentTableProps {
   students: StudentStatusRecord[];
@@ -74,6 +79,13 @@ interface StudentTableProps {
   onOpenEmailReminder?: (targetStudent?: StudentStatusRecord) => void;
   onOpenDataHealthReport?: () => void;
   onAddRosterStudent?: (rollNo: string, name: string) => void;
+  onBatchAddRosterStudents?: (students: Array<{ rollNo: string; name: string }>) => Promise<{
+    added: Array<{ rollNo: string; name: string }>;
+    skipped: Array<{ student: { rollNo: string; name: string }; reason: string }>;
+  }> | {
+    added: Array<{ rollNo: string; name: string }>;
+    skipped: Array<{ student: { rollNo: string; name: string }; reason: string }>;
+  };
   onEditRosterStudent?: (rollNo: string, newName: string) => void;
   onDeleteRosterStudent?: (rollNo: string) => void;
   onToast?: (message: string, type: 'success' | 'error' | 'info') => void;
@@ -168,6 +180,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onOpenEmailReminder,
   onOpenDataHealthReport,
   onAddRosterStudent,
+  onBatchAddRosterStudents,
   onEditRosterStudent,
   onDeleteRosterStudent,
   onToast,
@@ -190,17 +203,21 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
   // Student roster mutation state
   const [showRosterModal, setShowRosterModal] = useState(false);
+  const [showBatchImportModal, setShowBatchImportModal] = useState(false);
+  const [showRosterManagementModal, setShowRosterManagementModal] = useState(false);
+  const [rosterManagementTab, setRosterManagementTab] = useState<'BATCH_IMPORT' | 'ADD_SINGLE' | 'VIEW_ROSTER'>('BATCH_IMPORT');
   const [rosterModalMode, setRosterModalMode] = useState<'ADD' | 'EDIT'>('ADD');
   const [modalRollNo, setModalRollNo] = useState('');
   const [modalName, setModalName] = useState('');
   const [rosterError, setRosterError] = useState<string | null>(null);
 
+  const handleOpenRosterManagement = (tab: 'BATCH_IMPORT' | 'ADD_SINGLE' | 'VIEW_ROSTER' = 'BATCH_IMPORT') => {
+    setRosterManagementTab(tab);
+    setShowRosterManagementModal(true);
+  };
+
   const handleOpenAddRosterModal = () => {
-    setRosterModalMode('ADD');
-    setModalRollNo('');
-    setModalName('');
-    setRosterError(null);
-    setShowRosterModal(true);
+    handleOpenRosterManagement('ADD_SINGLE');
   };
 
   const handleOpenEditRosterModal = (rollNo: string, currentName: string) => {
@@ -599,6 +616,64 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         onToast={onToast}
       />
 
+      {/* Dedicated Permanent Class Roster Management Banner */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950/40 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600/20 via-indigo-600/20 to-emerald-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+            <Users className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
+                <span>Active Class Roster</span>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-950 text-blue-300 border border-blue-800">
+                  {students.length} Students
+                </span>
+              </h3>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950 text-emerald-300 border border-emerald-800">
+                <Database className="w-3 h-3 text-emerald-400" />
+                Permanently Synced (Local &amp; Database)
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Permanently register students or bulk-import entire class rosters via copy-paste or CSV.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
+          <button
+            type="button"
+            onClick={() => handleOpenRosterManagement('ADD_SINGLE')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-bold rounded-xl transition cursor-pointer shadow-md shadow-blue-600/20"
+            title="Add a student permanently with Roll Number & Name"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Student</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenRosterManagement('BATCH_IMPORT')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs sm:text-sm font-bold rounded-xl transition cursor-pointer shadow-md shadow-emerald-600/20"
+            title="Bulk import students via textarea paste or CSV file"
+          >
+            <Users className="w-4 h-4" />
+            <span>Batch Import Students</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenRosterManagement('VIEW_ROSTER')}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer"
+            title="View, search, edit, or export the active roster list"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-indigo-400" />
+            <span>Manage Roster</span>
+          </button>
+        </div>
+      </div>
+
       {/* Synchronization Issue Quick Filter Chips */}
       <div className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-3.5 space-y-2 shadow-lg">
         <div className="flex items-center justify-between">
@@ -832,12 +907,25 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             {onAddRosterStudent && (
               <button
                 type="button"
-                onClick={handleOpenAddRosterModal}
+                onClick={() => handleOpenRosterManagement('ADD_SINGLE')}
                 className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-blue-950 to-indigo-950 hover:from-blue-900 hover:to-indigo-900 border border-blue-500/40 text-blue-200 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer shadow-md"
-                title="Add a new student manually to the active class roster"
+                title="Add a new student permanently to the active class roster"
               >
                 <Plus className="w-4 h-4 text-blue-400" />
                 <span>Add Student</span>
+              </button>
+            )}
+
+            {/* Batch Import Students Button */}
+            {(onBatchAddRosterStudents || onAddRosterStudent) && (
+              <button
+                type="button"
+                onClick={() => handleOpenRosterManagement('BATCH_IMPORT')}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-950 to-teal-950 hover:from-emerald-900 hover:to-teal-900 border border-emerald-500/40 text-emerald-200 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer shadow-md"
+                title="Bulk-import a list of student names and roll numbers via textarea or spreadsheet paste"
+              >
+                <Users className="w-4 h-4 text-emerald-400" />
+                <span>Batch Import Students</span>
               </button>
             )}
 
@@ -2116,6 +2204,24 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 uppercase"
                   />
                 </div>
+
+                {rosterModalMode === 'ADD' && (
+                  <div className="flex items-center justify-between p-3 bg-slate-950/80 border border-slate-800 rounded-2xl text-xs">
+                    <span className="text-slate-400">Have multiple students to add?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowRosterModal(false);
+                        setShowBatchImportModal(true);
+                      }}
+                      className="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Batch Import Textarea</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
@@ -2139,6 +2245,66 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             </div>
           </div>
         )}
+
+        {/* Dedicated Batch Import Students Modal */}
+        <BatchImportStudentsModal
+          isOpen={showBatchImportModal}
+          onClose={() => setShowBatchImportModal(false)}
+          onBatchImport={async (newStudents) => {
+            if (onBatchAddRosterStudents) {
+              return onBatchAddRosterStudents(newStudents);
+            }
+            if (onAddRosterStudent) {
+              const added: any[] = [];
+              const skipped: any[] = [];
+              for (const s of newStudents) {
+                try {
+                  onAddRosterStudent(s.rollNo, s.name);
+                  added.push(s);
+                } catch (e: any) {
+                  skipped.push({ student: s, reason: e.message || 'Already exists' });
+                }
+              }
+              return { added, skipped };
+            }
+            return { added: [], skipped: [] };
+          }}
+          onToast={onToast}
+        />
+
+        {/* Unified Permanent Roster & Batch Import Management Modal */}
+        <RosterManagementModal
+          isOpen={showRosterManagementModal}
+          onClose={() => setShowRosterManagementModal(false)}
+          initialTab={rosterManagementTab}
+          onAddRosterStudent={(rollNo, name) => {
+            if (onAddRosterStudent) {
+              onAddRosterStudent(rollNo, name);
+            }
+          }}
+          onBatchAddRosterStudents={async (newStudents) => {
+            if (onBatchAddRosterStudents) {
+              return onBatchAddRosterStudents(newStudents);
+            }
+            if (onAddRosterStudent) {
+              const added: any[] = [];
+              const skipped: any[] = [];
+              for (const s of newStudents) {
+                try {
+                  onAddRosterStudent(s.rollNo, s.name);
+                  added.push(s);
+                } catch (e: any) {
+                  skipped.push({ student: s, reason: e.message || 'Already exists' });
+                }
+              }
+              return { added, skipped };
+            }
+            return { added: [], skipped: [] };
+          }}
+          onEditRosterStudent={onEditRosterStudent}
+          onDeleteRosterStudent={onDeleteRosterStudent}
+          onToast={onToast}
+        />
       </div>
     </div>
   );

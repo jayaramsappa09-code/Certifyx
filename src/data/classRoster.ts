@@ -4,7 +4,7 @@ import { Student } from '../types';
  * EXACT INITIAL FIXED CLASS ROSTER (67 STUDENTS ONLY)
  * As strictly specified in section 7 of the requirements.
  */
-const FIXED_CLASS_ROSTER_STATIC: Student[] = [
+export const FIXED_CLASS_ROSTER_STATIC: Student[] = [
   { rollNo: '25A31A05DV', name: 'ADABALA NAVYA RAMYA SREE' },
   { rollNo: '25A31A05DW', name: 'BEVARA PRASANTHI' },
   { rollNo: '25A31A05DX', name: 'CHILLA DEEPTHI' },
@@ -134,6 +134,49 @@ export function addRosterStudent(student: Student): void {
   updateRosterMap();
 }
 
+export function batchAddRosterStudents(students: Student[]): {
+  added: Student[];
+  skipped: Array<{ student: Student; reason: string }>;
+} {
+  const added: Student[] = [];
+  const skipped: Array<{ student: Student; reason: string }> = [];
+  const existingRolls = new Set(FIXED_CLASS_ROSTER.map((s) => s.rollNo.toUpperCase().trim()));
+
+  for (const s of students) {
+    const cleanRoll = (s.rollNo || '').toUpperCase().trim();
+    const cleanName = (s.name || '').trim();
+
+    if (!cleanRoll) {
+      skipped.push({ student: s, reason: 'Missing roll number' });
+      continue;
+    }
+    if (!cleanName) {
+      skipped.push({ student: s, reason: 'Missing student name' });
+      continue;
+    }
+    if (existingRolls.has(cleanRoll)) {
+      skipped.push({ student: s, reason: `Student with roll number ${cleanRoll} already exists in roster` });
+      continue;
+    }
+
+    const newStudent: Student = { rollNo: cleanRoll, name: cleanName, email: s.email, phone: s.phone };
+    FIXED_CLASS_ROSTER.push(newStudent);
+    existingRolls.add(cleanRoll);
+    added.push(newStudent);
+  }
+
+  if (added.length > 0) {
+    try {
+      localStorage.setItem('ccam_dynamic_roster', JSON.stringify(FIXED_CLASS_ROSTER));
+    } catch (e) {
+      console.error('Failed to save updated roster to localStorage:', e);
+    }
+    updateRosterMap();
+  }
+
+  return { added, skipped };
+}
+
 export function editRosterStudent(rollNo: string, newName: string): void {
   const normalizedRoll = rollNo.toUpperCase().trim();
   const student = FIXED_CLASS_ROSTER.find(s => s.rollNo.toUpperCase().trim() === normalizedRoll);
@@ -156,6 +199,15 @@ export function deleteRosterStudent(rollNo: string): void {
   FIXED_CLASS_ROSTER.splice(index, 1);
   try {
     localStorage.setItem('ccam_dynamic_roster', JSON.stringify(FIXED_CLASS_ROSTER));
+  } catch {}
+  updateRosterMap();
+}
+
+export function resetRosterToDefault(): void {
+  FIXED_CLASS_ROSTER.length = 0;
+  FIXED_CLASS_ROSTER.push(...FIXED_CLASS_ROSTER_STATIC);
+  try {
+    localStorage.removeItem('ccam_dynamic_roster');
   } catch {}
   updateRosterMap();
 }
