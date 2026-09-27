@@ -37,6 +37,7 @@ import {
   Users,
   ArrowRight,
   Database,
+  Compass,
 } from 'lucide-react';
 import {
   StudentStatusRecord,
@@ -50,6 +51,7 @@ import { DataMismatchSection } from './DataMismatchSection';
 import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 import { BatchImportStudentsModal } from './BatchImportStudentsModal';
 import { RosterManagementModal } from './RosterManagementModal';
+import { ClassroomMatrixView } from './ClassroomMatrixView';
 
 interface StudentTableProps {
   students: StudentStatusRecord[];
@@ -194,6 +196,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     'rollNo' | 'name' | 'overallStatus' | 'driveUploaded' | 'sheetUpdated' | 'submitted' | 'lastActivity'
   >('rollNo');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [tableViewMode, setTableViewMode] = useState<'MATRIX' | 'TABLE'>('MATRIX');
   const exportDropdownRef = useRef<HTMLDivElement>(null);
 
   const incompleteCount = useMemo(
@@ -739,8 +742,62 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         </div>
       </div>
 
-      {/* Controls Bar: Search, Filters, and Multi-Part CSV Exports */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
+      {/* View Mode Mode Bar: Matrix vs Detailed Table */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/90 p-3 rounded-2xl border border-slate-800 shadow-inner">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-blue-400" />
+          <span className="text-xs font-bold text-slate-200">Classroom Roster Layout Mode:</span>
+          <span className="text-[11px] text-slate-400 hidden md:inline">Choose spatial grid or tabular audit list</span>
+        </div>
+
+        <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
+          <button
+            type="button"
+            onClick={() => setTableViewMode('MATRIX')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              tableViewMode === 'MATRIX'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5 text-blue-400" />
+            <span>🌌 Interactive Matrix (Seating Map &amp; HUD)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTableViewMode('TABLE')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              tableViewMode === 'TABLE'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+            <span>📋 Detailed Audit Table</span>
+          </button>
+        </div>
+      </div>
+
+      {/* MATRIX VIEW OR TABLE VIEW CONDITIONAL DISPLAY */}
+      {tableViewMode === 'MATRIX' && (
+        <ClassroomMatrixView
+          students={students}
+          sheetRows={sheetRows}
+          onOpenDetails={onOpenDetails}
+          onOpenEmailReminder={onOpenEmailReminder}
+          onToggleSubmitted={onToggleSubmitted}
+          onToggleDriveUploaded={onToggleDriveUploaded}
+          onToggleSheetUpdated={onToggleSheetUpdated}
+          activeFilter={activeFilter}
+          setActiveFilter={setActiveFilter}
+        />
+      )}
+
+      {tableViewMode === 'TABLE' && (
+        <div className="space-y-4">
+          {/* Controls Bar: Search, Filters, and Multi-Part CSV Exports */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search Bar */}
           <div className="relative flex-1">
@@ -2154,6 +2211,10 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             );
           })
         )}
+        </div>
+        </div>
+      )}
+
         {/* Dynamic Add / Edit Student Roster Modal */}
         {showRosterModal && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in animate-duration-150">
@@ -2312,7 +2373,6 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           onDeleteRosterStudent={onDeleteRosterStudent}
           onToast={onToast}
         />
-      </div>
     </div>
   );
 };

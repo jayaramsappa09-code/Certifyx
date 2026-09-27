@@ -111,11 +111,9 @@ import {
   SyncStepInfo,
   DetailedSyncProgress,
 } from './components/GlobalSyncProgressBar';
-import { OfflinePendingUpdatesModal } from './components/OfflinePendingUpdatesModal';
 import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
 import { EmailReminderModal } from './components/EmailReminderModal';
-import { AutoEmailSchedulerModal } from './components/AutoEmailSchedulerModal';
 import { DataHealthReportModal } from './components/DataHealthReportModal';
 import { DateRangeFilterBar } from './components/DateRangeFilterBar';
 import {
@@ -273,6 +271,7 @@ export default function App() {
   const [showAdvancedExportModal, setShowAdvancedExportModal] = useState(false);
   const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
   const [showEmailReminderModal, setShowEmailReminderModal] = useState(false);
+  const [showEmailAutomationModal, setShowEmailAutomationModal] = useState(false);
   const [showAutoSchedulerModal, setShowAutoSchedulerModal] = useState(false);
   const [showDataHealthReportModal, setShowDataHealthReportModal] = useState(false);
   const [targetStudentForReminder, setTargetStudentForReminder] = useState<StudentStatusRecord | null>(null);
@@ -2202,7 +2201,6 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                 setTargetStudentForReminder(null);
                 setShowEmailReminderModal(true);
               }}
-              onOpenAutoScheduler={() => setShowAutoSchedulerModal(true)}
             />
 
             {/* Date-Range Filter Bar & Submission Velocity Analytics */}
@@ -2447,30 +2445,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         />
       )}
 
-      {/* Auto Email Reminder Scheduler Modal */}
-      {showAutoSchedulerModal && (
-        <AutoEmailSchedulerModal
-          isOpen={showAutoSchedulerModal}
-          onClose={() => setShowAutoSchedulerModal(false)}
-          students={studentStatuses}
-          settings={settings}
-          onSaveSettings={(newSettings) => {
-            saveAppSettings(newSettings);
-            setSettings((prev) => ({ ...prev, ...newSettings }));
-          }}
-          onOpenEmailReminder={(student) => {
-            setShowAutoSchedulerModal(false);
-            setTargetStudentForReminder(student || null);
-            setShowEmailReminderModal(true);
-          }}
-          onRecordAuditLog={(action, details) => {
-            addAuditLog(action, currentUser?.email || 'admin', details, 'SETTINGS');
-            setAuditLogs(getAuditLogs());
-          }}
-          onToast={showToast}
-        />
-      )}
-
+      {/* Email Automation & Reminder Suite Modal */}
       {/* Data Health Report Modal Overlay */}
       {showDataHealthReportModal && (
         <DataHealthReportModal

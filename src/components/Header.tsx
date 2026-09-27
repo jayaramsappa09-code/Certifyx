@@ -138,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Data Health Report Button */}
+          {/* Data Health Report Quick Trigger */}
           {onOpenDataHealthReport && (
             <button
               type="button"
@@ -270,7 +270,7 @@ export const Header: React.FC<HeaderProps> = ({
           <span>Needs Review</span>
           {reviewCount > 0 && (
             <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-              activeTab === 'review' ? 'bg-white text-amber-900' : 'bg-amber-500 text-slate-950'
+              activeTab === 'review' ? 'bg-white text-amber-700' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
             }`}>
               {reviewCount}
             </span>
