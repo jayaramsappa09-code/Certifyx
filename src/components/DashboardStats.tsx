@@ -118,9 +118,9 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
     },
     {
       id: 'COMPLETED',
-      label: 'Completed',
+      label: 'Verified',
       value: completedCount,
-      subtext: 'Drive + Sheet + Submitted',
+      subtext: 'All 3 ticked',
       icon: CheckCircle2,
       color: 'emerald',
       border: 'border-emerald-500/30',

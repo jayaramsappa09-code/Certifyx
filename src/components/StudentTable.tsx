@@ -47,6 +47,8 @@ import {
   ReconciliationAnalysis,
 } from '../types';
 import { isStudentMatchingDateRange, getLatestStudentActivity } from '../utils/dateFilterUtils';
+import { DataMismatchSection } from './DataMismatchSection';
+import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 import { BatchImportStudentsModal } from './BatchImportStudentsModal';
 import { RosterManagementModal } from './RosterManagementModal';
 import { ClassroomMatrixView } from './ClassroomMatrixView';
@@ -459,7 +461,8 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         cmp = (a.name || '').localeCompare(b.name || '');
       } else if (sortField === 'overallStatus') {
         const statusOrder: Record<string, number> = {
-          COMPLETED: 3,
+          COMPLETED: 4,
+          UNSUBMITTED_MATCH: 3,
           PENDING: 2,
           'NOT STARTED': 1,
         };
@@ -606,6 +609,24 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* 0. Dedicated Data Mismatch & Reconciliation Analyzer Section */}
+      <DataMismatchSection
+        students={students}
+        sheetRows={sheetRows}
+        driveFiles={driveFiles}
+        initialAnalysis={reconciliationAnalysis}
+        onFilterTableByMismatch={(filterKey) => {
+          if (filterKey === 'MISSING_SHEET') setActiveFilter('SHEET_PENDING');
+          else if (filterKey === 'MISSING_DRIVE') setActiveFilter('DRIVE_PENDING');
+          else if (filterKey === 'COUNT_MISMATCH') setActiveFilter('COUNT_MISMATCH');
+          else setActiveFilter(filterKey);
+        }}
+        onOpenStudentDetails={onOpenDetails}
+        onOpenEmailReminder={onOpenEmailReminder}
+        onOpenDataHealthReport={onOpenDataHealthReport}
+        onToast={onToast}
+      />
+
       {/* Dedicated Permanent Class Roster Management Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950/40 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -1504,6 +1525,8 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                           className={`py-3.5 px-4 text-center border-l-4 transition-colors duration-150 relative group/border ${
                             student.overallStatus === 'COMPLETED'
                               ? 'border-l-emerald-500/90'
+                              : student.overallStatus === 'UNSUBMITTED_MATCH'
+                              ? 'border-l-indigo-500/95'
                               : student.overallStatus === 'PENDING'
                               ? 'border-l-amber-500/90'
                               : 'border-l-red-500/90'
@@ -1516,9 +1539,11 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                               <span className={`w-2 h-2 rounded-full ${
                                 student.overallStatus === 'COMPLETED'
                                   ? 'bg-emerald-400 animate-pulse'
+                                  : student.overallStatus === 'UNSUBMITTED_MATCH'
+                                  ? 'bg-indigo-400 animate-pulse'
                                   : student.overallStatus === 'PENDING'
                                   ? 'bg-amber-400 animate-pulse'
-                                  : 'bg-red-400'
+                                  : 'bg-red-400 animate-pulse'
                               }`} />
                               <span className="text-slate-400 uppercase tracking-wider font-bold text-[9px]">Last Status Update:</span>
                             </div>
@@ -1692,7 +1717,12 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                           {student.overallStatus === 'COMPLETED' ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-600 shadow-sm shadow-emerald-900/40">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                              COMPLETED
+                              VERIFIED
+                            </span>
+                          ) : student.overallStatus === 'UNSUBMITTED_MATCH' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-950/90 text-indigo-300 border border-indigo-700 shadow-sm shadow-indigo-900/40" title="Roster match confirmed on Drive and Sheet, form submission remaining">
+                              <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                              DRIVE & SHEET OK
                             </span>
                           ) : student.overallStatus === 'PENDING' ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-950/80 text-amber-300 border border-amber-700/70">
@@ -1700,8 +1730,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                               PENDING
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-950 text-slate-400 border border-slate-800">
-                              NOT STARTED
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-950 text-red-400 border border-red-800 shadow-sm shadow-red-900/20">
+                              <XCircle className="w-3.5 h-3.5 text-red-400" />
+                              MISSING
                             </span>
                           )}
 
@@ -1848,6 +1879,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     {isExpanded && (
                       <tr className="bg-slate-950/90 border-b border-purple-900/60">
                         <td colSpan={9} className="p-4 space-y-3">
+                          {/* Real Discrepancy Audit Proof Card */}
+                          <DiscrepancyProofCard student={student} onOpenEmailReminder={onOpenEmailReminder} />
+
                           <div className="bg-slate-900/90 border border-purple-800/50 rounded-2xl p-4 space-y-3 shadow-inner">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                               <div className="flex items-center gap-2">

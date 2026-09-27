@@ -113,7 +113,7 @@ export interface StudentStatusRecord {
   driveUploaded: boolean;
   sheetUpdated: boolean;
   submitted: boolean;
-  overallStatus: 'COMPLETED' | 'PENDING' | 'NOT STARTED';
+  overallStatus: 'COMPLETED' | 'PENDING' | 'NOT STARTED' | 'UNSUBMITTED_MATCH';
   countMismatch?: CountMismatchInfo;
   driveFiles: DriveCertificateFile[];
   sheetRecords: SheetRowRecord[];
@@ -131,7 +131,7 @@ export interface ReconciliationAnalysis {
     rollNo: string;
     name: string;
     driveFilesCount: number;
-    overallStatus: 'COMPLETED' | 'PENDING' | 'NOT STARTED';
+    overallStatus: 'COMPLETED' | 'PENDING' | 'NOT STARTED' | 'UNSUBMITTED_MATCH';
     hasDriveFiles: boolean;
   }[];
   
@@ -241,7 +241,13 @@ export interface AutoEmailSchedulerConfig {
 }
 
 export interface WhatsAppApiConfig {
-  provider: 'DIRECT_WA_LINK';
+  provider: 'TWILIO' | 'META_CLOUD_API' | 'CUSTOM_WEBHOOK' | 'DIRECT_WA_LINK';
+  twilioAccountSid?: string;
+  twilioAuthToken?: string;
+  twilioWhatsAppFrom?: string; // e.g. whatsapp:+14155238886
+  metaAccessToken?: string;
+  metaPhoneNumberId?: string;
+  webhookUrl?: string;
 }
 
 export interface AppSettings {

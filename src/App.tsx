@@ -118,11 +118,8 @@ import { DateRangeFilterBar } from './components/DateRangeFilterBar';
 import {
   DateRangeFilterConfig,
 } from './types';
-import {
-  isStudentMatchingDateRange,
-  getLatestStudentActivity,
-  DateRangeAnalysisResult,
-} from './utils/dateFilterUtils';
+import { isStudentMatchingDateRange, getLatestStudentActivity, DateRangeAnalysisResult } from './utils/dateFilterUtils';
+import { calculateOverallStatus } from './utils/statusEngine';
 import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet, Layers } from 'lucide-react';
 
 const recalculateStudentMismatch = (
@@ -499,12 +496,11 @@ export default function App() {
               const updatedSubmitted =
                 typeof payload.submitted !== 'undefined' ? payload.submitted : s.submitted;
 
-              let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'NOT STARTED';
-              if (updatedDriveUploaded && updatedSheetUpdated && updatedSubmitted) {
-                nextOverall = 'COMPLETED';
-              } else if (updatedDriveUploaded || updatedSheetUpdated || updatedSubmitted) {
-                nextOverall = 'PENDING';
-              }
+              const nextOverall = calculateOverallStatus({
+                driveUploaded: updatedDriveUploaded,
+                sheetUpdated: updatedSheetUpdated,
+                submitted: updatedSubmitted,
+              });
 
               const driveCount = s.driveFiles?.length || 0;
               const sheetCount = s.sheetRecords?.length || 0;
@@ -1339,12 +1335,11 @@ export default function App() {
     setStudentStatuses((prev) =>
       prev.map((s) => {
         if (s.rollNo === rollNo) {
-          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-          if (s.driveUploaded && s.sheetUpdated && nextVal) {
-            nextOverall = 'COMPLETED';
-          } else if (!s.driveUploaded && !s.sheetUpdated && !nextVal) {
-            nextOverall = 'NOT STARTED';
-          }
+          const nextOverall = calculateOverallStatus({
+            driveUploaded: s.driveUploaded,
+            sheetUpdated: s.sheetUpdated,
+            submitted: nextVal,
+          });
           return {
             ...s,
             submitted: nextVal,
@@ -1357,12 +1352,11 @@ export default function App() {
 
     // Update student detail modal state if currently open
     if (selectedStudentForDetail && selectedStudentForDetail.rollNo === rollNo) {
-      let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-      if (selectedStudentForDetail.driveUploaded && selectedStudentForDetail.sheetUpdated && nextVal) {
-        nextOverall = 'COMPLETED';
-      } else if (!selectedStudentForDetail.driveUploaded && !selectedStudentForDetail.sheetUpdated && !nextVal) {
-        nextOverall = 'NOT STARTED';
-      }
+      const nextOverall = calculateOverallStatus({
+        driveUploaded: selectedStudentForDetail.driveUploaded,
+        sheetUpdated: selectedStudentForDetail.sheetUpdated,
+        submitted: nextVal,
+      });
       setSelectedStudentForDetail({
         ...selectedStudentForDetail,
         submitted: nextVal,
@@ -1528,12 +1522,11 @@ export default function App() {
     setStudentStatuses((prev) =>
       prev.map((s) => {
         if (s.rollNo === rollNo) {
-          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-          if (nextVal && s.sheetUpdated && s.submitted) {
-            nextOverall = 'COMPLETED';
-          } else if (!nextVal && !s.sheetUpdated && !s.submitted) {
-            nextOverall = 'NOT STARTED';
-          }
+          const nextOverall = calculateOverallStatus({
+            driveUploaded: nextVal,
+            sheetUpdated: s.sheetUpdated,
+            submitted: s.submitted,
+          });
           const updatedMismatch = recalculateStudentMismatch(s, nextVal, s.sheetUpdated);
           return {
             ...s,
@@ -1547,12 +1540,11 @@ export default function App() {
     );
 
     if (selectedStudentForDetail && selectedStudentForDetail.rollNo === rollNo) {
-      let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-      if (nextVal && selectedStudentForDetail.sheetUpdated && selectedStudentForDetail.submitted) {
-        nextOverall = 'COMPLETED';
-      } else if (!nextVal && !selectedStudentForDetail.sheetUpdated && !selectedStudentForDetail.submitted) {
-        nextOverall = 'NOT STARTED';
-      }
+      const nextOverall = calculateOverallStatus({
+        driveUploaded: nextVal,
+        sheetUpdated: selectedStudentForDetail.sheetUpdated,
+        submitted: selectedStudentForDetail.submitted,
+      });
       const updatedMismatch = recalculateStudentMismatch(selectedStudentForDetail, nextVal, selectedStudentForDetail.sheetUpdated);
       setSelectedStudentForDetail({
         ...selectedStudentForDetail,
@@ -1588,12 +1580,11 @@ export default function App() {
     setStudentStatuses((prev) =>
       prev.map((s) => {
         if (s.rollNo === rollNo) {
-          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-          if (s.driveUploaded && nextVal && s.submitted) {
-            nextOverall = 'COMPLETED';
-          } else if (!s.driveUploaded && !nextVal && !s.submitted) {
-            nextOverall = 'NOT STARTED';
-          }
+          const nextOverall = calculateOverallStatus({
+            driveUploaded: s.driveUploaded,
+            sheetUpdated: nextVal,
+            submitted: s.submitted,
+          });
           const updatedMismatch = recalculateStudentMismatch(s, s.driveUploaded, nextVal);
           return {
             ...s,
@@ -1607,12 +1598,11 @@ export default function App() {
     );
 
     if (selectedStudentForDetail && selectedStudentForDetail.rollNo === rollNo) {
-      let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-      if (selectedStudentForDetail.driveUploaded && nextVal && selectedStudentForDetail.submitted) {
-        nextOverall = 'COMPLETED';
-      } else if (!selectedStudentForDetail.driveUploaded && !nextVal && !selectedStudentForDetail.submitted) {
-        nextOverall = 'NOT STARTED';
-      }
+      const nextOverall = calculateOverallStatus({
+        driveUploaded: selectedStudentForDetail.driveUploaded,
+        sheetUpdated: nextVal,
+        submitted: selectedStudentForDetail.submitted,
+      });
       const updatedMismatch = recalculateStudentMismatch(selectedStudentForDetail, selectedStudentForDetail.driveUploaded, nextVal);
       setSelectedStudentForDetail({
         ...selectedStudentForDetail,
@@ -1654,12 +1644,11 @@ export default function App() {
     setStudentStatuses((prev) =>
       prev.map((s) => {
         if (rollSet.has(s.rollNo.toUpperCase().trim())) {
-          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-          if (s.driveUploaded && s.sheetUpdated && submitted) {
-            nextOverall = 'COMPLETED';
-          } else if (!s.driveUploaded && !s.sheetUpdated && !submitted) {
-            nextOverall = 'NOT STARTED';
-          }
+          const nextOverall = calculateOverallStatus({
+            driveUploaded: s.driveUploaded,
+            sheetUpdated: s.sheetUpdated,
+            submitted,
+          });
           return {
             ...s,
             submitted,
@@ -1672,12 +1661,11 @@ export default function App() {
 
     // Update detail modal if open
     if (selectedStudentForDetail && rollSet.has(selectedStudentForDetail.rollNo.toUpperCase().trim())) {
-      let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-      if (selectedStudentForDetail.driveUploaded && selectedStudentForDetail.sheetUpdated && submitted) {
-        nextOverall = 'COMPLETED';
-      } else if (!selectedStudentForDetail.driveUploaded && !selectedStudentForDetail.sheetUpdated && !submitted) {
-        nextOverall = 'NOT STARTED';
-      }
+      const nextOverall = calculateOverallStatus({
+        driveUploaded: selectedStudentForDetail.driveUploaded,
+        sheetUpdated: selectedStudentForDetail.sheetUpdated,
+        submitted,
+      });
       setSelectedStudentForDetail({
         ...selectedStudentForDetail,
         submitted,
@@ -1712,12 +1700,11 @@ export default function App() {
     setStudentStatuses((prev) =>
       prev.map((s) => {
         if (rollSet.has(s.rollNo.toUpperCase().trim())) {
-          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-          if (driveUploaded && s.sheetUpdated && s.submitted) {
-            nextOverall = 'COMPLETED';
-          } else if (!driveUploaded && !s.sheetUpdated && !s.submitted) {
-            nextOverall = 'NOT STARTED';
-          }
+          const nextOverall = calculateOverallStatus({
+            driveUploaded,
+            sheetUpdated: s.sheetUpdated,
+            submitted: s.submitted,
+          });
           const updatedMismatch = recalculateStudentMismatch(s, driveUploaded, s.sheetUpdated);
           return {
             ...s,
@@ -1757,12 +1744,11 @@ export default function App() {
     setStudentStatuses((prev) =>
       prev.map((s) => {
         if (rollSet.has(s.rollNo.toUpperCase().trim())) {
-          let nextOverall: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
-          if (s.driveUploaded && sheetUpdated && s.submitted) {
-            nextOverall = 'COMPLETED';
-          } else if (!s.driveUploaded && !sheetUpdated && !s.submitted) {
-            nextOverall = 'NOT STARTED';
-          }
+          const nextOverall = calculateOverallStatus({
+            driveUploaded: s.driveUploaded,
+            sheetUpdated,
+            submitted: s.submitted,
+          });
           const updatedMismatch = recalculateStudentMismatch(s, s.driveUploaded, sheetUpdated);
           return {
             ...s,

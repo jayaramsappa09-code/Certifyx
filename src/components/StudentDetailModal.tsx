@@ -22,10 +22,12 @@ import {
   AlertTriangle,
   MessageCircle,
   UploadCloud,
+  Sparkles,
 } from 'lucide-react';
 import { StudentStatusRecord, DriveCertificateFile } from '../types';
 import { CertificateThumbnail } from './ManualReviewQueue';
 import { getStudentActivityEvents } from '../utils/dateFilterUtils';
+import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 import {
   uploadCertificateFileToSupabase,
   listUploadedCertificatesForStudent,
@@ -164,16 +166,20 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 {totalCerts} Certificate{totalCerts === 1 ? '' : 's'} Tracked
               </span>
               {student.overallStatus === 'COMPLETED' ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-700">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> COMPLETED
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-700">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> VERIFIED
+                </span>
+              ) : student.overallStatus === 'UNSUBMITTED_MATCH' ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-950/90 text-indigo-300 border border-indigo-700" title="Roster match confirmed on Drive and Sheet, form submission remaining">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" /> DRIVE & SHEET OK
                 </span>
               ) : student.overallStatus === 'PENDING' ? (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950/80 text-amber-300 border border-amber-700">
-                  <Clock className="w-3.5 h-3.5" /> PENDING
+                  <Clock className="w-3.5 h-3.5 text-amber-400" /> PENDING
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-950 text-slate-400 border border-slate-800">
-                  NOT STARTED
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-950 text-red-400 border border-red-800">
+                  <XCircle className="w-3.5 h-3.5 text-red-400" /> MISSING
                 </span>
               )}
             </div>
@@ -323,6 +329,9 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Real Discrepancy & Proof Evidence Section */}
+          <DiscrepancyProofCard student={student} onOpenEmailReminder={onOpenEmailReminder} />
 
           {/* Unified Certificate Tracker Section */}
           <div className="space-y-3">

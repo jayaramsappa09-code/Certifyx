@@ -162,7 +162,7 @@ export interface StudentStatusRealtimePayload {
   driveUploaded?: boolean;
   sheetUpdated?: boolean;
   submitted?: boolean;
-  overallStatus?: 'COMPLETED' | 'PENDING' | 'NOT STARTED';
+  overallStatus?: 'COMPLETED' | 'PENDING' | 'NOT STARTED' | 'UNSUBMITTED_MATCH';
   updatedBy?: string;
   updatedAt?: string;
 }

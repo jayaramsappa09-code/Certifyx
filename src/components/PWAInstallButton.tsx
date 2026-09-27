@@ -70,16 +70,29 @@ export const PWAInstallButton: React.FC = () => {
     );
   }
 
+  // Detect if inside an iframe
+  const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+
+  const handleInstallClick = () => {
+    if (isIframe) {
+      // Launch directly in a new tab so they are outside the iframe boundary and can trigger real installation!
+      window.open(window.location.href, '_blank');
+    } else {
+      setShowGeneralGuide(true);
+    }
+  };
+
   // General Fallback (when inside iframe or event not triggered yet)
   return (
     <>
       <button
         type="button"
-        onClick={() => setShowGeneralGuide(true)}
-        className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl shadow-lg transition duration-200 cursor-pointer border border-slate-700"
+        onClick={handleInstallClick}
+        className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-slate-100 text-xs font-semibold rounded-xl shadow-lg transition duration-200 cursor-pointer border border-blue-500/30"
+        title={isIframe ? "Launch in a direct tab to unlock instant browser installation" : "Install App"}
       >
         <Download className="w-3.5 h-3.5" />
-        <span>Install App</span>
+        <span>{isIframe ? 'Launch to Install' : 'Install App'}</span>
       </button>
 
       {showGeneralGuide && (
@@ -106,13 +119,26 @@ export const PWAInstallButton: React.FC = () => {
               <br />
               3. Or open your browser menu (the **3 dots** in Chrome/Edge) and select **"Save and share"** or **"Install Class Certificate..."**.
             </p>
-            <button
-              type="button"
-              onClick={() => setShowGeneralGuide(false)}
-              className="mt-6 w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
-            >
-              Got It
-            </button>
+            <div className="mt-6 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  window.open(window.location.href, '_blank');
+                  setShowGeneralGuide(false);
+                }}
+                className="w-full py-2 bg-blue-650 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Launch Direct Tab &amp; Install</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowGeneralGuide(false)}
+                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
+              >
+                Got It
+              </button>
+            </div>
           </div>
         </div>
       )}

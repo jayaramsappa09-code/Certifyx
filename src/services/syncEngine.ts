@@ -617,11 +617,13 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     }
 
     // Overall 3-way status: Completed (all 3 true), Not Started (all 3 false), Pending (otherwise)
-    let overallStatus: 'COMPLETED' | 'PENDING' | 'NOT STARTED' = 'PENDING';
+    let overallStatus: any = 'PENDING';
     if (driveUploaded && sheetUpdated && submitted) {
       overallStatus = 'COMPLETED';
     } else if (!driveUploaded && !sheetUpdated && !submitted) {
       overallStatus = 'NOT STARTED';
+    } else if (driveUploaded && sheetUpdated && !submitted) {
+      overallStatus = 'UNSUBMITTED_MATCH';
     } else {
       overallStatus = 'PENDING';
     }

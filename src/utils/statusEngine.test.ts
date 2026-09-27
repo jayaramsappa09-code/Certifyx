@@ -11,7 +11,7 @@ function runStatusEngineTests() {
     { input: { driveUploaded: true, sheetUpdated: false, submitted: false }, expected: 'PENDING' },
     { input: { driveUploaded: false, sheetUpdated: true, submitted: false }, expected: 'PENDING' },
     { input: { driveUploaded: false, sheetUpdated: false, submitted: true }, expected: 'PENDING' },
-    { input: { driveUploaded: true, sheetUpdated: true, submitted: false }, expected: 'PENDING' },
+    { input: { driveUploaded: true, sheetUpdated: true, submitted: false }, expected: 'UNSUBMITTED_MATCH' },
     { input: { driveUploaded: true, sheetUpdated: false, submitted: true }, expected: 'PENDING' },
     { input: { driveUploaded: false, sheetUpdated: true, submitted: true }, expected: 'PENDING' },
   ];
