@@ -100,12 +100,8 @@ import { AuditLogTab } from './components/AuditLogTab';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { DocumentationTab } from './components/DocumentationTab';
-import { SyncReportModal } from './components/SyncHistoryReportModal';
-import { FirstSyncPreviewModal } from './components/InitialSyncPreviewModal';
-import { SetupWizardModal } from './components/AppSetupWizardModal';
+import { OnboardingWizardModal } from './components/OnboardingWizardModal';
 import { AccessDeniedScreen } from './components/AccessDeniedScreen';
-import { GoogleConnectModal } from './components/GoogleAccountConnectModal';
-import { SheetSyncProofModal } from './components/GoogleSheetSyncProofModal';
 import {
   GlobalSyncProgressBar,
   SyncProgressState,
@@ -116,7 +112,7 @@ import {
 import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
 import { EmailReminderModal } from './components/EmailReminderModal';
-import { DataHealthReportModal } from './components/DataHealthReportModal';
+import { DataHealthView } from './components/DataHealthView';
 import { DateRangeFilterBar } from './components/DateRangeFilterBar';
 import {
   DateRangeFilterConfig,
@@ -2347,64 +2343,31 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         />
       )}
 
-      {/* Sync Complete Report Modal */}
-      {showSyncReportModal && lastSyncReport && (
-        <SyncReportModal
-          isOpen={showSyncReportModal}
-          report={lastSyncReport}
-          onClose={() => setShowSyncReportModal(false)}
-          onExportReport={handleExportSummaryReport}
-        />
-      )}
-
-      {/* First Sync Preview Modal */}
-      {showFirstSyncPreviewModal && pendingFirstSyncResult && (
-        <FirstSyncPreviewModal
-          report={pendingFirstSyncResult ? pendingFirstSyncResult.report : null}
-          onConfirm={handleConfirmFirstSync}
-          onCancel={() => {
-            setPendingFirstSyncResult(null);
-            setShowFirstSyncPreviewModal(false);
-          }}
-        />
-      )}
-
-      {/* Setup Wizard Modal */}
+      {/* Setup & Connection Wizard */}
       {showSetupWizardModal && (
-        <SetupWizardModal
+        <OnboardingWizardModal
           isOpen={showSetupWizardModal}
           onClose={() => setShowSetupWizardModal(false)}
           isGoogleConnected={Boolean(accessToken)}
           driveConfig={driveConfig}
           sheetConfig={sheetConfig}
           onConnectGoogle={handleGoogleLogin}
-          onGoToIntegration={() => {
-            setShowSetupWizardModal(false);
-            setActiveTab('integration');
-          }}
           onTriggerSync={handleSyncNow}
+          onToast={showToast}
         />
       )}
 
       {/* Google Connect Options Modal */}
       {showGoogleConnectModal && (
-        <GoogleConnectModal
+        <OnboardingWizardModal
           isOpen={showGoogleConnectModal}
           onClose={() => setShowGoogleConnectModal(false)}
-          onSuccess={handleGoogleConnectSuccess}
-          initialError={googleConnectError}
-        />
-      )}
-
-      {/* Sheet Sync Proof Modal */}
-      {showSheetProofModal && (
-        <SheetSyncProofModal
-          isOpen={showSheetProofModal}
-          onClose={() => setShowSheetProofModal(false)}
-          proof={sheetSyncProof}
-          onRefreshLiveProof={handleRefreshLiveSheetProof}
-          isRefreshing={isRefreshingProof}
-          onManualAssignRollNo={handleManualAssignSheetRow}
+          isGoogleConnected={Boolean(accessToken)}
+          driveConfig={driveConfig}
+          sheetConfig={sheetConfig}
+          onConnectGoogle={handleGoogleLogin}
+          onTriggerSync={handleSyncNow}
+          onToast={showToast}
         />
       )}
 
@@ -2449,26 +2412,46 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
       )}
 
       {/* Email Automation & Reminder Suite Modal */}
-      {/* Data Health Report Modal Overlay */}
+      {/* Data Health Report Overlay */}
       {showDataHealthReportModal && (
-        <DataHealthReportModal
-          students={studentStatuses}
-          sheetRows={sheetSyncProof?.rows || []}
-          driveFiles={Array.from(
-            new Map(
-              [
-                ...studentStatuses.flatMap((s) => s.driveFiles || []),
-                ...unidentifiedFiles,
-                ...outsideClassFiles,
-                ...duplicateFiles,
-              ]
-                .filter(Boolean)
-                .map((f) => [f.id || f.name, f])
-            ).values()
-          )}
-          onClose={() => setShowDataHealthReportModal(false)}
-          onToast={showToast}
-        />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowDataHealthReportModal(false);
+          }}
+        >
+          <div className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-800 bg-slate-900 p-4 shadow-2xl">
+            <div className="sticky top-0 z-10 mb-4 flex items-center justify-between border-b border-slate-800 bg-slate-900 pb-3">
+              <h3 className="text-lg font-bold text-white">Data Health & Reconciliation Report</h3>
+              <button
+                type="button"
+                onClick={() => setShowDataHealthReportModal(false)}
+                className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-slate-600 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+            <DataHealthView
+              students={studentStatuses}
+              sheetRows={sheetSyncProof?.rows || []}
+              driveFiles={Array.from(
+                new Map(
+                  [
+                    ...studentStatuses.flatMap((s) => s.driveFiles || []),
+                    ...unidentifiedFiles,
+                    ...outsideClassFiles,
+                    ...duplicateFiles,
+                  ]
+                    .filter(Boolean)
+                    .map((f) => [f.id || f.name, f])
+                ).values()
+              )}
+              unidentifiedFiles={unidentifiedFiles}
+              outsideClassFiles={outsideClassFiles}
+              onToast={showToast}
+            />
+          </div>
+        </div>
       )}
 
       {/* Footer */}
