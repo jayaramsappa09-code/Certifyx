@@ -229,15 +229,19 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   };
 
   const handleSaveRosterStudent = () => {
-    if (!modalRollNo.trim() || !modalName.trim()) {
-      setRosterError('Both Roll Number and Student Name are required.');
+    if (!modalRollNo.trim()) {
+      setRosterError('Roll Number is required.');
       return;
     }
+    const cleanName = modalName.trim() || `Student ${modalRollNo.toUpperCase().trim()}`;
     if (rosterModalMode === 'ADD') {
       if (onAddRosterStudent) {
         try {
-          onAddRosterStudent(modalRollNo, modalName);
+          onAddRosterStudent(modalRollNo, cleanName);
           setShowRosterModal(false);
+          setModalRollNo('');
+          setModalName('');
+          onToast?.(`🎉 Student ${cleanName} (${modalRollNo}) added successfully!`, 'success');
         } catch (e: any) {
           setRosterError(e.message || 'Error adding student.');
         }
@@ -245,8 +249,11 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     } else {
       if (onEditRosterStudent) {
         try {
-          onEditRosterStudent(modalRollNo, modalName);
+          onEditRosterStudent(modalRollNo, cleanName);
           setShowRosterModal(false);
+          setModalRollNo('');
+          setModalName('');
+          onToast?.(`✅ Student ${modalRollNo} updated successfully!`, 'success');
         } catch (e: any) {
           setRosterError(e.message || 'Error updating student.');
         }
