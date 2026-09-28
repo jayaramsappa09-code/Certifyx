@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FolderPlus, Copy, CheckCircle2, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
-import { StudentStatusRecord, DriveCertificateFile } from '../types';
+import { StudentStatusRecord } from '../types';
 import { createDriveFolder, copyDriveFile } from '../services/googleDriveService';
 
 interface ReconciliationExporterProps {
@@ -18,51 +18,49 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
   const [newFolderName, setNewFolderName] = useState(`Matched_Certificates_${new Date().toISOString().split('T')[0]}`);
   const [progress, setProgress] = useState({ current: 0, total: 0, status: '' });
   const [exportedFolderUrl, setExportedFolderUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const matchedStudents = students.filter(s => s.driveUploaded && s.sheetUpdated);
 
   const handleStartExport = async () => {
+    setError(null);
     if (!accessToken) {
-      onToast?.('Google authorization required for export.', 'error');
+      setError('Google authorization required for export.');
       return;
     }
 
     if (matchedStudents.length === 0) {
-      onToast?.('No matched students found to export.', 'info');
+      setError('No matched students found to export.');
       return;
     }
 
     setIsExporting(true);
     setExportedFolderUrl(null);
-    setProgress({ current: 0, total: matchedStudents.length, status: 'Creating folder...' });
+    
+    // Pre-calculate total files for accurate progress
+    let totalToCopy = 0;
+    matchedStudents.forEach(s => {
+      totalToCopy += s.driveFiles?.length || 0;
+    });
+    setProgress({ current: 0, total: totalToCopy, status: 'Starting export...' });
 
     try {
       // 1. Create target folder
-      console.log('Starting export, creating folder:', newFolderName);
       const folder = await createDriveFolder(newFolderName, accessToken);
+      if (!folder || !folder.id) {
+        throw new Error('Failed to create folder: No ID returned from Google Drive.');
+      }
+      
       const targetFolderId = folder.id;
       const url = `https://drive.google.com/drive/folders/${targetFolderId}`;
       setExportedFolderUrl(url);
-      console.log('Folder created, URL set:', url);
 
       // 2. Iterate and copy files
       let copiedCount = 0;
-      let totalToCopy = 0;
       
-      // Pre-calculate total files for accurate progress
-      matchedStudents.forEach(s => {
-        totalToCopy += s.driveFiles?.length || 0;
-      });
-
-      setProgress({ current: 0, total: totalToCopy, status: 'Starting copies...' });
-
       for (const student of matchedStudents) {
-        if (!student.driveFiles || student.driveFiles.length === 0) {
-          console.warn(`Student ${student.rollNo} is matched but has no drive files in state.`);
-          continue;
-        }
+        if (!student.driveFiles || student.driveFiles.length === 0) continue;
 
-        // Copy each file associated with this student
         for (const file of student.driveFiles) {
           setProgress(prev => ({
             ...prev,
@@ -75,7 +73,6 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
             setProgress(prev => ({ ...prev, current: copiedCount }));
           } catch (err) {
             console.error(`Failed to copy file ${file.name} for student ${student.rollNo}:`, err);
-            // We continue the loop even if one file fails
           }
         }
       }
@@ -87,6 +84,7 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
       onToast?.(`Successfully exported ${copiedCount} files to Drive folder: ${newFolderName}`, 'success');
     } catch (err: any) {
       console.error('Export failed:', err);
+      setError(err.message || 'Failed to export matched data.');
       onToast?.(err.message || 'Failed to export matched data.', 'error');
     } finally {
       setIsExporting(false);
@@ -95,6 +93,13 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
 
   return (
     <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-2xl space-y-4 shadow-sm">
+      {error && (
+        <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 text-xs font-bold flex items-center gap-2">
+          <AlertCircle className="w-4 h-4" />
+          <span>Error: {error}</span>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
           <FolderPlus className="w-5 h-5" />
@@ -144,7 +149,7 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
           <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800 p-0.5">
             <div
               className="bg-gradient-to-r from-blue-600 to-indigo-500 h-full rounded-full transition-all duration-300 shadow-sm shadow-blue-500/50"
-              style={{ width: `${(progress.current / progress.total) * 100}%` }}
+              style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
             />
           </div>
         </div>
