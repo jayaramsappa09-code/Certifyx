@@ -24,6 +24,7 @@ import {
   DataHealthIssue,
   HealthSeverity,
 } from '../utils/dataHealthScanner';
+import { ReconciliationExporter } from './ReconciliationExporter';
 
 interface DataHealthViewProps {
   students: StudentStatusRecord[];
@@ -31,6 +32,7 @@ interface DataHealthViewProps {
   driveFiles?: DriveCertificateFile[];
   unidentifiedFiles?: DriveCertificateFile[];
   outsideClassFiles?: DriveCertificateFile[];
+  accessToken: string | null;
   onToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -40,6 +42,7 @@ export const DataHealthView: React.FC<DataHealthViewProps> = ({
   driveFiles = [],
   unidentifiedFiles = [],
   outsideClassFiles = [],
+  accessToken,
   onToast,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -183,6 +186,13 @@ export const DataHealthView: React.FC<DataHealthViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Matched Data Migration / Export Tool */}
+      <ReconciliationExporter 
+        students={students} 
+        accessToken={accessToken} 
+        onToast={onToast} 
+      />
 
       {/* CSV Export & Audit Row */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-950/30 border border-slate-800 rounded-2xl">

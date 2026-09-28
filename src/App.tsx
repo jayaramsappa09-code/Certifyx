@@ -2473,6 +2473,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               )}
               unidentifiedFiles={unidentifiedFiles}
               outsideClassFiles={outsideClassFiles}
+              accessToken={accessToken}
               onToast={showToast}
             />
           </div>

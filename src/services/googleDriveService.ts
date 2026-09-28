@@ -343,3 +343,80 @@ export async function listCertificateFilesInFolder(
 
   return files;
 }
+
+/**
+ * Create a new folder in Google Drive
+ */
+export async function createDriveFolder(
+  name: string,
+  accessToken: string,
+  parentId?: string
+): Promise<DriveFolderInfo> {
+  const url = `https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`;
+  const body: any = {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+  };
+  if (parentId) {
+    body.parents = [parentId];
+  }
+
+  const res = await fetchDriveWithRetry(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error?.message || `Failed to create folder "${name}" (${res.status})`);
+  }
+
+  const data = await res.json();
+  return {
+    id: data.id,
+    name: data.name,
+    mimeType: data.mimeType,
+  };
+}
+
+/**
+ * Copy a file to a specific folder in Google Drive
+ */
+export async function copyDriveFile(
+  fileId: string,
+  accessToken: string,
+  targetFolderId: string,
+  newName?: string
+): Promise<{ id: string; name: string }> {
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}/copy?supportsAllDrives=true`;
+  const body: any = {
+    parents: [targetFolderId],
+  };
+  if (newName) {
+    body.name = newName;
+  }
+
+  const res = await fetchDriveWithRetry(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error?.message || `Failed to copy file ID "${fileId}" (${res.status})`);
+  }
+
+  const data = await res.json();
+  return {
+    id: data.id,
+    name: data.name,
+  };
+}

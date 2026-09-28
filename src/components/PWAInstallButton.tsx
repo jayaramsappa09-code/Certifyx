@@ -6,16 +6,22 @@ export const PWAInstallButton: React.FC = () => {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   const [showGeneralGuide, setShowGeneralGuide] = useState(false);
+  const [isManuallyHidden, setIsManuallyHidden] = useState(false);
 
-  if (isInstalled) {
+  if (isInstalled || isManuallyHidden) {
     return null;
   }
+
+  const handleNativeInstall = async () => {
+    setIsManuallyHidden(true);
+    await install();
+  };
 
   if (isInstallable) {
     return (
       <button
         type="button"
-        onClick={install}
+        onClick={handleNativeInstall}
         className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-slate-100 text-xs font-semibold rounded-xl shadow-lg transition duration-200 cursor-pointer border border-blue-500/30"
       >
         <Download className="w-3.5 h-3.5" />
@@ -41,7 +47,10 @@ export const PWAInstallButton: React.FC = () => {
             <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl text-slate-100 relative">
               <button
                 type="button"
-                onClick={() => setShowIOSGuide(false)}
+                onClick={() => {
+                  setShowIOSGuide(false);
+                  setIsManuallyHidden(true);
+                }}
                 className="absolute top-4 right-4 text-slate-400 hover:text-slate-200"
               >
                 <X className="w-5 h-5" />
@@ -58,7 +67,10 @@ export const PWAInstallButton: React.FC = () => {
               </p>
               <button
                 type="button"
-                onClick={() => setShowIOSGuide(false)}
+                onClick={() => {
+                  setShowIOSGuide(false);
+                  setIsManuallyHidden(true);
+                }}
                 className="mt-6 w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
               >
                 Got It
@@ -77,6 +89,7 @@ export const PWAInstallButton: React.FC = () => {
     if (isIframe) {
       // Launch directly in a new tab so they are outside the iframe boundary and can trigger real installation!
       window.open(window.location.href, '_blank');
+      setIsManuallyHidden(true);
     } else {
       setShowGeneralGuide(true);
     }
@@ -100,7 +113,10 @@ export const PWAInstallButton: React.FC = () => {
           <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl text-slate-100 relative">
             <button
               type="button"
-              onClick={() => setShowGeneralGuide(false)}
+              onClick={() => {
+                setShowGeneralGuide(false);
+                setIsManuallyHidden(true);
+              }}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-200"
             >
               <X className="w-5 h-5" />
@@ -125,6 +141,7 @@ export const PWAInstallButton: React.FC = () => {
                 onClick={() => {
                   window.open(window.location.href, '_blank');
                   setShowGeneralGuide(false);
+                  setIsManuallyHidden(true);
                 }}
                 className="w-full py-2 bg-blue-650 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
               >
@@ -133,7 +150,10 @@ export const PWAInstallButton: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setShowGeneralGuide(false)}
+                onClick={() => {
+                  setShowGeneralGuide(false);
+                  setIsManuallyHidden(true);
+                }}
                 className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
               >
                 Got It
