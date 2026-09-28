@@ -53,6 +53,7 @@ import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 import { BatchImportStudentsModal } from './BatchImportStudentsModal';
 import { RosterManagementModal } from './RosterManagementModal';
 import { ClassroomMatrixView } from './ClassroomMatrixView';
+import { HighlightText, getStudentMatchReasons } from './HighlightText';
 
 interface StudentTableProps {
   students: StudentStatusRecord[];
@@ -1607,7 +1608,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                         {/* Roll No */}
                         <td className="py-3.5 px-4 font-mono font-semibold text-slate-200 tracking-wide text-xs sm:text-sm">
                           <span className="px-2 py-0.5 rounded bg-blue-950/60 border border-blue-900/60 text-blue-300">
-                            {student.rollNo}
+                            <HighlightText text={student.rollNo} query={searchQuery} />
                           </span>
                         </td>
 
@@ -1626,7 +1627,25 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                                 <ChevronRight className="w-4 h-4" />
                               )}
                             </button>
-                            <span>{student.name}</span>
+                            <div>
+                              <span>
+                                <HighlightText text={student.name} query={searchQuery} />
+                              </span>
+                              {searchQuery.trim() && (
+                                <div className="flex flex-wrap items-center gap-1 mt-1">
+                                  {getStudentMatchReasons(student, searchQuery).map((reason, rIdx) => (
+                                    <span
+                                      key={rIdx}
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-950/80 border border-amber-500/50 text-amber-300 shadow-sm"
+                                      title={`Matched ${reason.label}: "${reason.matchedText}"`}
+                                    >
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                                      <span>Matched {reason.label}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
 
@@ -1641,7 +1660,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-950/80 text-blue-300 border border-blue-800/70"
                                 >
                                   <Award className="w-3 h-3 text-blue-400" />
-                                  {cert}
+                                  <HighlightText text={cert} query={searchQuery} />
                                 </span>
                               ))}
                               {student.driveFiles.length > student.certificates.length && (
@@ -1675,7 +1694,9 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                                     title={`Open Drive File: ${f.name}`}
                                   >
                                     <ExternalLink className="w-2.5 h-2.5" />
-                                    <span className="truncate max-w-[100px]">{f.name}</span>
+                                    <span className="truncate max-w-[120px]">
+                                      <HighlightText text={f.name} query={searchQuery} />
+                                    </span>
                                   </a>
                                 ))}
                                 {student.driveFiles.length > 3 && (
@@ -1955,9 +1976,11 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                                           #{cIdx + 1}
                                         </span>
                                         <div>
-                                          <span className="font-bold text-white block">{certTitle}</span>
+                                          <span className="font-bold text-white block">
+                                            <HighlightText text={certTitle} query={searchQuery} />
+                                          </span>
                                           <span className="text-[10px] text-slate-400 font-mono">
-                                            Roll No: {student.rollNo} • Verified Student Certificate
+                                            Roll No: <HighlightText text={student.rollNo} query={searchQuery} /> • Verified Student Certificate
                                           </span>
                                         </div>
                                       </div>
@@ -1965,7 +1988,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                                       {matchingFile && (
                                         <div className="flex items-center gap-2 text-[11px]">
                                           <span className="text-[10px] text-slate-400 truncate max-w-[200px]">
-                                            📄 {matchingFile.name}
+                                            📄 <HighlightText text={matchingFile.name} query={searchQuery} />
                                           </span>
                                           <a
                                             href={matchingFile.webViewLink || `https://drive.google.com/file/d/${matchingFile.id}/view`}
@@ -2063,11 +2086,25 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     </div>
                     <div>
                       <span className="font-mono text-xs font-bold text-blue-400 tracking-wide px-2 py-0.5 rounded bg-blue-950/70 border border-blue-900">
-                        {student.rollNo}
+                        <HighlightText text={student.rollNo} query={searchQuery} />
                       </span>
                       <h3 className="text-sm font-semibold text-white mt-1">
-                        {student.name}
+                        <HighlightText text={student.name} query={searchQuery} />
                       </h3>
+                      {searchQuery.trim() && (
+                        <div className="flex flex-wrap items-center gap-1 mt-1">
+                          {getStudentMatchReasons(student, searchQuery).map((reason, rIdx) => (
+                            <span
+                              key={rIdx}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-950/80 border border-amber-500/50 text-amber-300 shadow-sm"
+                              title={`Matched ${reason.label}: "${reason.matchedText}"`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                              <span>Matched {reason.label}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2099,7 +2136,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                           key={idx}
                           className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-950 text-slate-300 border border-slate-800"
                         >
-                          {cert}
+                          <HighlightText text={cert} query={searchQuery} />
                         </span>
                       ))}
                       {student.driveFiles.length > student.certificates.length && (
