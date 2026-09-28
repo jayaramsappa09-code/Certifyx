@@ -388,20 +388,38 @@ export async function broadcastStudentStatusUpdate(
 }
 
 /**
+ * Generic promise timeout helper to prevent hanging requests on slow internet
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Network request timed out')), timeoutMs)
+    ),
+  ]);
+}
+
+/**
  * Fetch all class roster records from Supabase database
  */
 export async function fetchClassRosterFromSupabase(): Promise<Array<{ rollNo: string; name: string; email?: string; phone?: string }> | null> {
   const client = getSupabaseClient();
   if (!client) return null;
   try {
-    const { data, error } = await client
-      .from('class_roster')
-      .select('*')
-      .order('roll_no', { ascending: true });
+    const { data, error } = (await withTimeout(
+      client
+        .from('class_roster')
+        .select('*')
+        .order('roll_no', { ascending: true }) as any,
+      2500
+    )) as any;
     if (error) {
       // Try fallback to 'students' table if class_roster isn't created yet
       try {
-        const fallback = await client.from('students').select('*').order('roll_no', { ascending: true });
+        const fallback = (await withTimeout(
+          client.from('students').select('*').order('roll_no', { ascending: true }) as any,
+          2000
+        )) as any;
         if (!fallback.error && fallback.data && fallback.data.length > 0) {
           return fallback.data.map((rec: any) => ({
             rollNo: rec.roll_no || rec.rollNo,
@@ -432,10 +450,13 @@ export async function fetchStudentStatusesFromSupabase(): Promise<StudentStatusR
   const client = getSupabaseClient();
   if (!client) return null;
   try {
-    const { data, error } = await client
-      .from('student_statuses')
-      .select('*')
-      .order('roll_no', { ascending: true });
+    const { data, error } = (await withTimeout(
+      client
+        .from('student_statuses')
+        .select('*')
+        .order('roll_no', { ascending: true }) as any,
+      2500
+    )) as any;
     if (error) {
       console.warn('Error fetching student statuses from Supabase:', error);
       return null;
