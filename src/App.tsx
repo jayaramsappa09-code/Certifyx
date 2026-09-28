@@ -2335,6 +2335,8 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
       {showExportCenterModal && (
         <ExportCenterModal
           students={studentStatuses}
+          accessToken={accessToken}
+          onToast={showToast}
           onClose={() => setShowExportCenterModal(false)}
         />
       )}
