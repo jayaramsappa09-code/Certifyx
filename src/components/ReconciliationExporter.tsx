@@ -61,22 +61,39 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
       let copiedCount = 0;
       
       for (const student of matchedStudents) {
-        if (!student.driveFiles || student.driveFiles.length === 0) continue;
+        if (!student.driveFiles || student.driveFiles.length === 0) {
+          console.warn(`Student ${student.rollNo} is matched but has no drive files in state.`);
+          continue;
+        }
 
         // Create student-specific subfolder
         const studentFolderName = `${student.rollNo}_${student.name || 'Unknown'}`;
         const studentFolder = await createDriveFolder(studentFolderName, accessToken, rootFolderId);
         const studentFolderId = studentFolder.id;
 
+        // Copy each file associated with this student
         for (const file of student.driveFiles) {
+          // Identify certificate type for subfolder, default to 'Other'
+          let certType = 'Other';
+          const sheetMatch = student.sheetRecords?.find(r => r.certificateUrl?.includes(file.id));
+          if (sheetMatch?.certificateType) {
+            certType = sheetMatch.certificateType;
+          } else if (file.detectedCertType) {
+            certType = file.detectedCertType;
+          }
+          
+          // Create type-specific subfolder
+          const typeFolder = await createDriveFolder(certType, accessToken, studentFolderId);
+          const typeFolderId = typeFolder.id;
+
           setProgress(prev => ({
             ...prev,
-            status: `Copying: ${file.name} to ${studentFolderName}`
+            status: `Copying: ${file.name} to ${studentFolderName}/${certType}`
           }));
 
           try {
-            // Copy file to student subfolder
-            await copyDriveFile(file.id, accessToken, studentFolderId, file.name);
+            // Copy file to type-specific subfolder
+            await copyDriveFile(file.id, accessToken, typeFolderId, file.name);
             copiedCount++;
             setProgress(prev => ({ ...prev, current: copiedCount }));
           } catch (err) {
