@@ -14,6 +14,7 @@ import {
   ReconciliationAnalysis,
 } from '../types';
 import { generateReconciliationAnalysis } from '../utils/reconciliationAnalyzer';
+import { scoreStudentMatch } from '../utils/advancedSearchAndMatchEngine';
 import {
   getSubmittedStatusMap,
   getDriveStatusOverrideMap,
@@ -377,6 +378,16 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
       }
     }
 
+    // Check 6: Intelligent NLP & Multi-Token Fuzzy Match Scorer
+    if (!detectedRoll && allowFuzzyNames) {
+      const matchScore = scoreStudentMatch(file.name, FIXED_CLASS_ROSTER, { allowFuzzy: true });
+      if (matchScore.matchedStudent && matchScore.confidenceScore >= 75) {
+        detectedRoll = matchScore.matchedStudent.rollNo;
+        detectedName = matchScore.matchedStudent.name;
+        matchMethod = 'STUDENT_NAME';
+      }
+    }
+
     // Certificate Type Detection
     if (!detectedType) {
       const typeResult = detectCertificateType(file.name, customCertPatterns);
@@ -489,15 +500,18 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
       }
     }
 
-    // Try multi-identifier fallback 3: Name / Fuzzy Roster Match
-    if (!targetRoll && (row.name || row.rawValues) && allowFuzzyNames) {
-      const targetName = row.name || Object.values(row.rawValues || {}).join(' ');
-      const normName = targetName.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (normName.length >= 4) {
-        const match = FIXED_CLASS_ROSTER.find(
-          (s) => s.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normName
-        );
-        if (match) targetRoll = match.rollNo;
+    // Try multi-identifier fallback 3: Name / Fuzzy Roster Match Scorer
+    if (!targetRoll && allowFuzzyNames) {
+      const candidateString = [row.rollNo, row.name, ...(row.rawValues ? Object.values(row.rawValues) : [])].join(' ');
+      const matchScore = scoreStudentMatch(candidateString, FIXED_CLASS_ROSTER, {
+        allowFuzzy: true,
+        emailCandidate: row.email,
+      });
+      if (matchScore.matchedStudent && matchScore.confidenceScore >= 75) {
+        targetRoll = matchScore.matchedStudent.rollNo;
+        if (!row.matchReason) {
+          row.matchReason = matchScore.matchReason;
+        }
       }
     }
 

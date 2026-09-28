@@ -47,6 +47,7 @@ import {
   ReconciliationAnalysis,
 } from '../types';
 import { isStudentMatchingDateRange, getLatestStudentActivity } from '../utils/dateFilterUtils';
+import { parseSearchQuery, isStudentMatchingAdvancedQuery } from '../utils/advancedSearchAndMatchEngine';
 import { DataMismatchSection } from './DataMismatchSection';
 import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 import { BatchImportStudentsModal } from './BatchImportStudentsModal';
@@ -355,33 +356,10 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   const filteredStudents = useMemo(() => {
     let result = [...students];
 
-    // 1. Multi-Token Intelligent Search (Roll No, Name, Certificates, Status, Email, Phone)
+    // 1. Ultimate Multi-Token & Advanced Grammar Search (Roll No, Name, Suffixes, Status, Flags, Negations)
     if (searchQuery.trim()) {
-      const tokens = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
-      result = result.filter((s) => {
-        // Construct a searchable string representation of the student
-        const roll = (s.rollNo || '').toLowerCase();
-        const name = (s.name || '').toLowerCase();
-        const status = (s.overallStatus || '').toLowerCase();
-        const certs = (s.certificates || []).map((c) => (c || '').toLowerCase()).join(' ');
-        const driveNames = (s.driveFiles || []).map((f) => (f.name || '').toLowerCase()).join(' ');
-        const phone = (s.phone || '').toLowerCase();
-        const email = (s.email || '').toLowerCase();
-
-        const driveText = s.driveUploaded ? 'drive uploaded drive_uploaded' : 'missing drive drive_missing';
-        const sheetText = s.sheetUpdated ? 'sheet updated sheet_updated' : 'missing sheet sheet_missing';
-        const subText = s.submitted ? 'submitted confirmed' : 'unsubmitted pending_submission';
-        const hasAnyMismatch =
-          (s.countMismatch && s.countMismatch.hasMismatch) ||
-          s.driveUploaded !== s.sheetUpdated ||
-          ((s.driveFiles?.length || 0) !== (s.sheetRecords?.length || 0));
-        const mismatchText = hasAnyMismatch ? 'mismatch count_mismatch discrepancy gap' : '';
-
-        const fullStudentSearchText = `${roll} ${name} ${status} ${certs} ${driveNames} ${phone} ${email} ${driveText} ${sheetText} ${subText} ${mismatchText}`;
-
-        // Every token in query must be present in the student's combined search text
-        return tokens.every((token) => fullStudentSearchText.includes(token));
-      });
+      const parsedQuery = parseSearchQuery(searchQuery);
+      result = result.filter((s) => isStudentMatchingAdvancedQuery(s, parsedQuery));
     }
 
     // 2. Filter Pills

@@ -634,3 +634,221 @@ export function exportGapAnalysisCsv(
   const dateStr = new Date().toISOString().slice(0, 10);
   downloadCsv(csv, `67_Student_Roster_Gap_Analysis_${dateStr}.csv`);
 }
+
+/**
+ * 7. Multi-Sheet Excel XML Workbook (.xls/.xlsx compatible)
+ * Exports full data with multiple tabs:
+ * Tab 1: Master Summary & Verification Status
+ * Tab 2: Category Matrix (Participations, Courses, Hackathons...)
+ * Tab 3: Defaulter & Discrepancy List
+ * Tab 4: Drive Files Inventory
+ */
+export function exportMultiSheetExcelXml(students: StudentStatusRecord[]): void {
+  const dateStr = new Date().toISOString().slice(0, 10);
+
+  // Helper to escape XML strings
+  const xmlEscape = (val: unknown): string => {
+    if (val === null || val === undefined) return '';
+    return String(val)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  };
+
+  const xmlCell = (val: unknown, type: 'String' | 'Number' = 'String', style = ''): string => {
+    const styleAttr = style ? ` ss:StyleID="${style}"` : '';
+    return `<Cell${styleAttr}><Data ss:Type="${type}">${xmlEscape(val)}</Data></Cell>`;
+  };
+
+  // Sheet 1: Master Summary Rows
+  const sheet1Rows: string[] = [
+    `<Row ss:StyleID="Header">
+      ${xmlCell('Roll Number')}
+      ${xmlCell('Student Name')}
+      ${xmlCell('Certificates Count')}
+      ${xmlCell('Drive Uploaded')}
+      ${xmlCell('Sheet Updated')}
+      ${xmlCell('Submitted')}
+      ${xmlCell('Overall Status')}
+      ${xmlCell('Count Mismatch')}
+      ${xmlCell('Drive Files')}
+      ${xmlCell('Sheet Records')}
+      ${xmlCell('Last Verified')}
+    </Row>`,
+  ];
+
+  students.forEach((s) => {
+    const hasMismatch = (s.countMismatch && s.countMismatch.hasMismatch) || s.driveUploaded !== s.sheetUpdated;
+    sheet1Rows.push(
+      `<Row>
+        ${xmlCell(s.rollNo)}
+        ${xmlCell(s.name)}
+        ${xmlCell(s.certificates.length || s.driveFiles.length, 'Number')}
+        ${xmlCell(s.driveUploaded ? 'YES' : 'NO')}
+        ${xmlCell(s.sheetUpdated ? 'YES' : 'NO')}
+        ${xmlCell(s.submitted ? 'YES' : 'NO')}
+        ${xmlCell(s.overallStatus)}
+        ${xmlCell(hasMismatch ? 'MISMATCH' : 'MATCHED')}
+        ${xmlCell(s.driveFiles.map((f) => f.name).join('; ') || 'None')}
+        ${xmlCell(s.sheetRecords.map((r) => r.certificateType || `Row #${r.rowIndex}`).join('; ') || 'None')}
+        ${xmlCell(s.lastUpdated || new Date().toISOString())}
+      </Row>`
+    );
+  });
+
+  // Sheet 2: Category Breakdown Matrix Rows
+  const categories = ['Participations', 'Courses', 'Hackathons', 'Industrial Training', 'Internships', 'Workshops', 'Publications', 'Seminars', 'Awards', 'Other'];
+  const sheet2Rows: string[] = [
+    `<Row ss:StyleID="Header">
+      ${xmlCell('Roll Number')}
+      ${xmlCell('Student Name')}
+      ${categories.map((c) => xmlCell(c)).join('')}
+      ${xmlCell('Total Verified Count')}
+    </Row>`,
+  ];
+
+  students.forEach((s) => {
+    const catCounts: Record<string, number> = {};
+    s.driveFiles.forEach((f) => {
+      const type = (f.detectedCertType || '').toLowerCase();
+      let matchedCat = 'Other';
+      if (type.includes('partic')) matchedCat = 'Participations';
+      else if (type.includes('course') || type.includes('nptel') || type.includes('udemy') || type.includes('coursera')) matchedCat = 'Courses';
+      else if (type.includes('hack')) matchedCat = 'Hackathons';
+      else if (type.includes('industrial')) matchedCat = 'Industrial Training';
+      else if (type.includes('intern')) matchedCat = 'Internships';
+      else if (type.includes('work') || type.includes('bootcamp')) matchedCat = 'Workshops';
+      else if (type.includes('pub') || type.includes('paper')) matchedCat = 'Publications';
+      else if (type.includes('sem')) matchedCat = 'Seminars';
+      else if (type.includes('award') || type.includes('merit')) matchedCat = 'Awards';
+      catCounts[matchedCat] = (catCounts[matchedCat] || 0) + 1;
+    });
+
+    sheet2Rows.push(
+      `<Row>
+        ${xmlCell(s.rollNo)}
+        ${xmlCell(s.name)}
+        ${categories.map((c) => xmlCell(catCounts[c] || 0, 'Number')).join('')}
+        ${xmlCell(s.driveFiles.length, 'Number')}
+      </Row>`
+    );
+  });
+
+  // Sheet 3: Defaulter List Rows
+  const defaulters = students.filter((s) => s.overallStatus !== 'COMPLETED');
+  const sheet3Rows: string[] = [
+    `<Row ss:StyleID="Header">
+      ${xmlCell('Roll Number')}
+      ${xmlCell('Student Name')}
+      ${xmlCell('Current Status')}
+      ${xmlCell('Missing Items')}
+      ${xmlCell('Action Required')}
+    </Row>`,
+  ];
+
+  defaulters.forEach((s) => {
+    const missing: string[] = [];
+    if (!s.driveUploaded) missing.push('Google Drive File');
+    if (!s.sheetUpdated) missing.push('Google Sheet Response');
+    if (!s.submitted) missing.push('Submission Confirmation');
+
+    sheet3Rows.push(
+      `<Row>
+        ${xmlCell(s.rollNo)}
+        ${xmlCell(s.name)}
+        ${xmlCell(s.overallStatus)}
+        ${xmlCell(missing.join(' & ') || 'Pending Review')}
+        ${xmlCell(`Notify student ${s.rollNo} to complete ${missing.join(' and ')}`)}
+      </Row>`
+    );
+  });
+
+  // Assemble full XML Workbook
+  const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#000000"/>
+  </Style>
+  <Style ss:ID="Header">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/>
+   <Interior ss:Color="#1E293B" ss:Pattern="Solid"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Master Summary">
+  <Table>
+   ${sheet1Rows.join('\n   ')}
+  </Table>
+ </Worksheet>
+ <Worksheet ss:Name="Category Matrix">
+  <Table>
+   ${sheet2Rows.join('\n   ')}
+  </Table>
+ </Worksheet>
+ <Worksheet ss:Name="Defaulter Notice List">
+  <Table>
+   ${sheet3Rows.join('\n   ')}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Class_Certificates_MultiTab_Workbook_${dateStr}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * 8. Custom Field Selection CSV Exporter
+ */
+export function exportCustomizedCsv(
+  students: StudentStatusRecord[],
+  selectedFieldKeys: string[]
+): void {
+  const fieldDefinitions: Record<string, { label: string; getValue: (s: StudentStatusRecord) => string | number }> = {
+    rollNo: { label: 'Roll Number', getValue: (s) => s.rollNo },
+    name: { label: 'Student Name', getValue: (s) => s.name },
+    email: { label: 'Email', getValue: (s) => s.email || 'N/A' },
+    phone: { label: 'Phone', getValue: (s) => s.phone || 'N/A' },
+    overallStatus: { label: 'Overall Status', getValue: (s) => s.overallStatus },
+    driveUploaded: { label: 'Drive Uploaded', getValue: (s) => (s.driveUploaded ? 'TRUE' : 'FALSE') },
+    sheetUpdated: { label: 'Sheet Updated', getValue: (s) => (s.sheetUpdated ? 'TRUE' : 'FALSE') },
+    submitted: { label: 'Submitted', getValue: (s) => (s.submitted ? 'TRUE' : 'FALSE') },
+    certCount: { label: 'Certificates Count', getValue: (s) => s.certificates.length || s.driveFiles.length },
+    certTitles: { label: 'Certificate Titles', getValue: (s) => s.driveFiles.map((f) => f.detectedCertTitle || f.name).join('; ') || 'None' },
+    driveLinks: { label: 'Google Drive Links', getValue: (s) => s.driveFiles.map((f) => f.webViewLink || '').filter(Boolean).join('; ') || 'None' },
+    sheetCategories: { label: 'Spreadsheet Categories', getValue: (s) => s.sheetRecords.map((r) => r.certificateType || '').filter(Boolean).join('; ') || 'None' },
+    lastUpdated: { label: 'Last Verification Date', getValue: (s) => s.lastUpdated || new Date().toISOString() },
+  };
+
+  const validKeys = selectedFieldKeys.filter((k) => fieldDefinitions[k]);
+  if (validKeys.length === 0) {
+    exportClassSummaryCsv(students);
+    return;
+  }
+
+  const headers = validKeys.map((k) => fieldDefinitions[k].label);
+  const rows = students.map((s) => {
+    return validKeys
+      .map((k) => escapeCsvCell(fieldDefinitions[k].getValue(s)))
+      .join(',');
+  });
+
+  const csv = [headers.join(','), ...rows].join('\n');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  downloadCsv(csv, `Custom_Selected_Export_${dateStr}.csv`);
+}
