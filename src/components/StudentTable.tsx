@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Search,
   Filter,
@@ -1272,6 +1273,44 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     return filteredStudents.slice(startIndex, endIndex);
   }, [filteredStudents, startIndex, endIndex]);
 
+  // Virtual table container refs for desktop and mobile scroll elements
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const mobileContainerRef = useRef<HTMLDivElement>(null);
+
+  // Flattened virtual rows to handle both normal student rows and expanded details rows cleanly
+  const virtualRows = useMemo(() => {
+    const rows: Array<{ type: 'student' | 'details'; student: StudentStatusRecord }> = [];
+    visibleStudents.forEach((student) => {
+      rows.push({ type: 'student', student });
+      if (expandedRollNos.has(student.rollNo)) {
+        rows.push({ type: 'details', student });
+      }
+    });
+    return rows;
+  }, [visibleStudents, expandedRollNos]);
+
+  // Desktop table virtualizer
+  const rowVirtualizer = useVirtualizer({
+    count: virtualRows.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: (index) => {
+      if (!virtualRows[index]) return 64;
+      return virtualRows[index].type === 'student' ? 64 : 380;
+    },
+    overscan: 15,
+  });
+
+  // Mobile list virtualizer
+  const mobileRowVirtualizer = useVirtualizer({
+    count: virtualRows.length,
+    getScrollElement: () => mobileContainerRef.current,
+    estimateSize: (index) => {
+      if (!virtualRows[index]) return 180;
+      return virtualRows[index].type === 'student' ? 180 : 380;
+    },
+    overscan: 15,
+  });
+
   const renderPaginationBar = () => {
     if (filteredStudents.length === 0) return null;
 
@@ -2458,12 +2497,12 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div ref={tableContainerRef} className="max-h-[650px] overflow-y-auto overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                 {/* Bulk Select All Checkbox Column */}
-                <th className="py-3.5 px-4 w-12 text-center">
+                <th className="py-3.5 px-4 w-12 text-center sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850">
                   <div className="inline-flex items-center justify-center">
                     <input
                       type="checkbox"
@@ -2487,7 +2526,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 {/* Sortable Roll No Header */}
                 <th
                   onClick={() => handleSort('rollNo')}
-                  className={`py-3.5 px-4 w-36 transition-colors duration-150 cursor-pointer select-none ${
+                  className={`py-3.5 px-4 w-36 transition-colors duration-150 cursor-pointer select-none sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850 ${
                     sortField === 'rollNo'
                       ? 'bg-blue-950/70 text-blue-300 border-b-2 border-blue-400 font-bold shadow-inner'
                       : 'hover:bg-slate-800/80 hover:text-white'
@@ -2520,7 +2559,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 {/* Sortable Student Name Header */}
                 <th
                   onClick={() => handleSort('name')}
-                  className={`py-3.5 px-4 transition-colors duration-150 cursor-pointer select-none ${
+                  className={`py-3.5 px-4 transition-colors duration-150 cursor-pointer select-none sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850 ${
                     sortField === 'name'
                       ? 'bg-blue-950/70 text-blue-300 border-b-2 border-blue-400 font-bold shadow-inner'
                       : 'hover:bg-slate-800/80 hover:text-white'
@@ -2550,12 +2589,12 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   </div>
                 </th>
 
-                <th className="py-3.5 px-4 text-slate-400">All Certificates Uploaded (Unified)</th>
+                <th className="py-3.5 px-4 text-slate-400 sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850">All Certificates Uploaded (Unified)</th>
 
                 {/* Sortable Drive Uploaded Header */}
                 <th
                   onClick={() => handleSort('driveUploaded')}
-                  className={`py-3.5 px-4 text-center w-28 transition-colors duration-150 cursor-pointer select-none ${
+                  className={`py-3.5 px-4 text-center w-28 transition-colors duration-150 cursor-pointer select-none sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850 ${
                     sortField === 'driveUploaded'
                       ? 'bg-blue-950/70 text-blue-300 border-b-2 border-blue-400 font-bold shadow-inner'
                       : 'hover:bg-slate-800/80 hover:text-white'
@@ -2579,7 +2618,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 {/* Sortable Sheet Updated Header */}
                 <th
                   onClick={() => handleSort('sheetUpdated')}
-                  className={`py-3.5 px-4 text-center w-28 transition-colors duration-150 cursor-pointer select-none ${
+                  className={`py-3.5 px-4 text-center w-28 transition-colors duration-150 cursor-pointer select-none sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850 ${
                     sortField === 'sheetUpdated'
                       ? 'bg-blue-950/70 text-blue-300 border-b-2 border-blue-400 font-bold shadow-inner'
                       : 'hover:bg-slate-800/80 hover:text-white'
@@ -2603,7 +2642,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 {/* Sortable Admin Confirmed Header */}
                 <th
                   onClick={() => handleSort('submitted')}
-                  className={`py-3.5 px-4 text-center w-32 transition-colors duration-150 cursor-pointer select-none ${
+                  className={`py-3.5 px-4 text-center w-32 transition-colors duration-150 cursor-pointer select-none sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850 ${
                     sortField === 'submitted'
                       ? 'bg-blue-950/70 text-blue-300 border-b-2 border-blue-400 font-bold shadow-inner'
                       : 'hover:bg-slate-800/80 hover:text-white'
@@ -2627,7 +2666,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 {/* Sortable Overall Status Header */}
                 <th
                   onClick={() => handleSort('overallStatus')}
-                  className={`py-3.5 px-4 text-center w-40 transition-colors duration-150 cursor-pointer select-none ${
+                  className={`py-3.5 px-4 text-center w-40 transition-colors duration-150 cursor-pointer select-none sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850 ${
                     sortField === 'overallStatus'
                       ? 'bg-blue-950/70 text-blue-300 border-b-2 border-blue-400 font-bold shadow-inner'
                       : 'hover:bg-slate-800/80 hover:text-white'
@@ -2660,7 +2699,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 {/* Sortable Recent Activity Date Header */}
                 <th
                   onClick={() => handleSort('lastActivity')}
-                  className={`py-3.5 px-4 text-center w-36 transition-colors duration-150 cursor-pointer select-none ${
+                  className={`py-3.5 px-4 text-center w-36 transition-colors duration-150 cursor-pointer select-none sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850 ${
                     sortField === 'lastActivity'
                       ? 'bg-blue-950/70 text-blue-300 border-b-2 border-blue-400 font-bold shadow-inner'
                       : 'hover:bg-slate-800/80 hover:text-white'
@@ -2691,7 +2730,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   </div>
                 </th>
 
-                <th className="py-3.5 px-4 text-right w-24">Actions</th>
+                <th className="py-3.5 px-4 text-right w-24 sticky top-0 bg-slate-950 z-20 shadow-sm border-b border-slate-850">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-sm">
@@ -2702,18 +2741,37 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   </td>
                 </tr>
               ) : (
-                visibleStudents.map((student) => {
-                  const hasDriveFiles = student.driveFiles.length > 0;
-                  const firstDriveFile = hasDriveFiles ? student.driveFiles[0] : null;
-                  const isSelected = selectedRollNos.has(student.rollNo);
-                  const isExpanded = expandedRollNos.has(student.rollNo);
-                  const totalCerts = student.certificates.length || student.driveFiles.length;
-                  const isRecentlyCompleted = recentlyCompletedRollNos.has(student.rollNo);
-
+                (() => {
+                  const virtualItems = rowVirtualizer.getVirtualItems();
                   return (
-                    <React.Fragment key={student.rollNo}>
-                      <tr
-                        onClick={(e) => handleRowClick(e, student.rollNo)}
+                    <>
+                      {virtualItems.length > 0 && (
+                        <tr>
+                          <td
+                            colSpan={10}
+                            style={{ height: `${virtualItems[0].start}px` }}
+                            className="border-none"
+                          />
+                        </tr>
+                      )}
+                      {virtualItems.map((virtualRow) => {
+                        const rowItem = virtualRows[virtualRow.index];
+                        if (!rowItem) return null;
+                        const student = rowItem.student;
+                        const hasDriveFiles = student.driveFiles.length > 0;
+                        const firstDriveFile = hasDriveFiles ? student.driveFiles[0] : null;
+                        const isSelected = selectedRollNos.has(student.rollNo);
+                        const isExpanded = expandedRollNos.has(student.rollNo);
+                        const totalCerts = student.certificates.length || student.driveFiles.length;
+                        const isRecentlyCompleted = recentlyCompletedRollNos.has(student.rollNo);
+
+                        if (rowItem.type === 'student') {
+                          return (
+                            <tr
+                              key={`${student.rollNo}-row`}
+                              ref={rowVirtualizer.measureElement}
+                              data-index={virtualRow.index}
+                              onClick={(e) => handleRowClick(e, student.rollNo)}
                         className={`student-row-item transition-all duration-200 hover:bg-slate-800/80 hover:shadow-lg hover:shadow-slate-950/40 group cursor-pointer ${
                           isSelected ? 'bg-purple-950/20' : ''
                         } ${isExpanded ? 'bg-slate-900/80 border-b border-purple-800/40' : ''}`}
@@ -3122,42 +3180,58 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                         </div>
                       </td>
                     </tr>
-
-                    {/* Expanded Row Certificate Details, Metadata, Status Overrides, and Timestamps */}
-                    {isExpanded && (
-                      <tr className="bg-slate-950/95 border-b border-purple-900/60">
-                        <td colSpan={10} className="p-3 sm:p-4">
-                          <StudentExpandedDetailsCard
-                            student={student}
-                            searchQuery={searchQuery}
-                            isRecentlyCompleted={isRecentlyCompleted}
-                            onToggleDriveUploaded={onToggleDriveUploaded}
-                            onToggleSheetUpdated={onToggleSheetUpdated}
-                            onToggleSubmitted={onToggleSubmitted}
-                            onOpenDetails={onOpenDetails}
-                            onOpenEmailReminder={onOpenEmailReminder}
-                            onEditRosterStudent={onEditRosterStudent ? handleOpenEditRosterModal : undefined}
-                            onDeleteRosterStudent={onDeleteRosterStudent ? handleExecuteDeleteRosterStudent : undefined}
-                            onToggleExpand={handleToggleExpand}
-                            copiedRollNo={copiedRollNo}
-                            onCopyLink={handleCopyLink}
-                            onOpenQRCode={(s) => setSelectedStudentForQRCode(s)}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-                })
+                  );
+                } else {
+                  return (
+                    <tr
+                      key={`${student.rollNo}-details`}
+                      ref={rowVirtualizer.measureElement}
+                      data-index={virtualRow.index}
+                      className="bg-slate-950/95 border-b border-purple-900/60"
+                    >
+                      <td colSpan={10} className="p-3 sm:p-4">
+                        <StudentExpandedDetailsCard
+                          student={student}
+                          searchQuery={searchQuery}
+                          isRecentlyCompleted={isRecentlyCompleted}
+                          onToggleDriveUploaded={onToggleDriveUploaded}
+                          onToggleSheetUpdated={onToggleSheetUpdated}
+                          onToggleSubmitted={onToggleSubmitted}
+                          onOpenDetails={onOpenDetails}
+                          onOpenEmailReminder={onOpenEmailReminder}
+                          onEditRosterStudent={onEditRosterStudent ? handleOpenEditRosterModal : undefined}
+                          onDeleteRosterStudent={onDeleteRosterStudent ? handleExecuteDeleteRosterStudent : undefined}
+                          onToggleExpand={handleToggleExpand}
+                          copiedRollNo={copiedRollNo}
+                          onCopyLink={handleCopyLink}
+                          onOpenQRCode={(s) => setSelectedStudentForQRCode(s)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                }
+              })}
+              {virtualItems.length > 0 && (
+                <tr>
+                  <td
+                    colSpan={10}
+                    style={{ height: `${rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end}px` }}
+                    className="border-none"
+                  />
+                </tr>
               )}
-            </tbody>
+            </>
+          );
+        })()
+      )}
+    </tbody>
           </table>
         </div>
         {renderPaginationBar()}
       </div>
 
       {/* Mobile Card View (Optimized for Android / Phones) */}
-      <div className="grid grid-cols-1 gap-3 md:hidden">
+      <div ref={mobileContainerRef} className="grid grid-cols-1 gap-3 md:hidden max-h-[600px] overflow-y-auto pr-1">
         {filteredStudents.length > 0 && (
           <div className="flex items-center justify-between bg-slate-900 border border-slate-800 px-3.5 py-2.5 rounded-xl text-xs text-slate-300 gap-2 flex-wrap">
             <button
@@ -3249,18 +3323,31 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             No students found.
           </div>
         ) : (
-          visibleStudents.map((student) => {
-            const hasDriveFiles = student.driveFiles.length > 0;
-            const firstDriveFile = hasDriveFiles ? student.driveFiles[0] : null;
-            const isSelected = selectedRollNos.has(student.rollNo);
-            const isExpanded = expandedRollNos.has(student.rollNo);
-            const totalCerts = student.certificates.length || student.driveFiles.length;
-            const isRecentlyCompleted = recentlyCompletedRollNos.has(student.rollNo);
-
+          (() => {
+            const virtualItems = mobileRowVirtualizer.getVirtualItems();
             return (
-              <div
-                key={student.rollNo}
-                onClick={(e) => handleRowClick(e, student.rollNo)}
+              <div className="space-y-3">
+                {virtualItems.length > 0 && (
+                  <div style={{ height: `${virtualItems[0].start}px` }} />
+                )}
+                {virtualItems.map((virtualRow) => {
+                  const rowItem = virtualRows[virtualRow.index];
+                  if (!rowItem) return null;
+                  const student = rowItem.student;
+                  const hasDriveFiles = student.driveFiles.length > 0;
+                  const firstDriveFile = hasDriveFiles ? student.driveFiles[0] : null;
+                  const isSelected = selectedRollNos.has(student.rollNo);
+                  const isExpanded = expandedRollNos.has(student.rollNo);
+                  const totalCerts = student.certificates.length || student.driveFiles.length;
+                  const isRecentlyCompleted = recentlyCompletedRollNos.has(student.rollNo);
+
+                  if (rowItem.type === 'student') {
+                    return (
+                      <div
+                        key={`${student.rollNo}-mobile-row`}
+                        ref={mobileRowVirtualizer.measureElement}
+                        data-index={virtualRow.index}
+                        onClick={(e) => handleRowClick(e, student.rollNo)}
                 className={`bg-slate-900 border-y border-r border-l-4 rounded-2xl p-4 space-y-3 shadow-md transition cursor-pointer hover:border-slate-700 ${
                   isSelected ? 'border-purple-500/50 bg-purple-950/20' : 'border-slate-800'
                 } ${
@@ -3529,31 +3616,42 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     </button>
                   </div>
                 </div>
-
-                {/* Mobile Expanded Details Card */}
-                {isExpanded && (
-                  <div className="pt-2">
-                    <StudentExpandedDetailsCard
-                      student={student}
-                      searchQuery={searchQuery}
-                      isRecentlyCompleted={isRecentlyCompleted}
-                      onToggleDriveUploaded={onToggleDriveUploaded}
-                      onToggleSheetUpdated={onToggleSheetUpdated}
-                      onToggleSubmitted={onToggleSubmitted}
-                      onOpenDetails={onOpenDetails}
-                      onOpenEmailReminder={onOpenEmailReminder}
-                      onEditRosterStudent={onEditRosterStudent ? handleOpenEditRosterModal : undefined}
-                      onDeleteRosterStudent={onDeleteRosterStudent ? handleExecuteDeleteRosterStudent : undefined}
-                      onToggleExpand={handleToggleExpand}
-                      copiedRollNo={copiedRollNo}
-                      onCopyLink={handleCopyLink}
-                    />
-                  </div>
-                )}
               </div>
             );
-          })
-        )}
+          } else {
+              return (
+                <div
+                  key={`${student.rollNo}-mobile-details`}
+                  ref={mobileRowVirtualizer.measureElement}
+                  data-index={virtualRow.index}
+                  className="bg-slate-950/95 border border-purple-900/60 p-4 rounded-2xl space-y-3"
+                >
+                  <StudentExpandedDetailsCard
+                    student={student}
+                    searchQuery={searchQuery}
+                    isRecentlyCompleted={isRecentlyCompleted}
+                    onToggleDriveUploaded={onToggleDriveUploaded}
+                    onToggleSheetUpdated={onToggleSheetUpdated}
+                    onToggleSubmitted={onToggleSubmitted}
+                    onOpenDetails={onOpenDetails}
+                    onOpenEmailReminder={onOpenEmailReminder}
+                    onEditRosterStudent={onEditRosterStudent ? handleOpenEditRosterModal : undefined}
+                    onDeleteRosterStudent={onDeleteRosterStudent ? handleExecuteDeleteRosterStudent : undefined}
+                    onToggleExpand={handleToggleExpand}
+                    copiedRollNo={copiedRollNo}
+                    onCopyLink={handleCopyLink}
+                  />
+                </div>
+              );
+            }
+          })}
+          {virtualItems.length > 0 && (
+            <div style={{ height: `${mobileRowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end}px` }} />
+          )}
+        </div>
+      );
+    })()
+  )}
         {renderPaginationBar()}
       </div>
         </div>
