@@ -1,6 +1,31 @@
 import { getSupabaseClient } from './supabaseClient';
 import { AuthUser } from '../types';
 
+// Safe sessionStorage utility to prevent SecurityError and QuotaExceededError in mobile browsers & iframes
+const safeSessionStorage = {
+  getItem(key: string): string | null {
+    try {
+      return typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(key) : null;
+    } catch {
+      return null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(key, value);
+      }
+    } catch {}
+  },
+  removeItem(key: string): void {
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(key);
+      }
+    } catch {}
+  }
+};
+
 // In-memory access token cache
 let cachedAccessToken: string | null = null;
 let cachedAuthUser: AuthUser | null = null;
@@ -105,8 +130,8 @@ export function initAuth(
   if (!client) {
     // Check sessionStorage as fallback for local mock admin or unconfigured client
     try {
-      const storedUser = sessionStorage.getItem('ccam_auth_user');
-      const storedToken = sessionStorage.getItem('ccam_auth_token');
+      const storedUser = safeSessionStorage.getItem('ccam_auth_user');
+      const storedToken = safeSessionStorage.getItem('ccam_auth_token');
       if (storedUser) {
         const parsedUser = JSON.parse(storedUser);
         cachedAuthUser = parsedUser;
@@ -135,7 +160,7 @@ export function initAuth(
       const token = session.provider_token || session.access_token || null;
       
       // Load cached token from session if provider_token is null in secondary session calls
-      const storedToken = sessionStorage.getItem('ccam_auth_token');
+      const storedToken = safeSessionStorage.getItem('ccam_auth_token');
       const resolvedToken = token || storedToken || null;
 
       cachedAccessToken = resolvedToken;
@@ -143,10 +168,10 @@ export function initAuth(
 
       // Persist in session storage
       try {
-        sessionStorage.setItem('ccam_auth_user', JSON.stringify(authUser));
+        safeSessionStorage.setItem('ccam_auth_user', JSON.stringify(authUser));
         if (resolvedToken) {
-          sessionStorage.setItem('ccam_auth_token', resolvedToken);
-          sessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
+          safeSessionStorage.setItem('ccam_auth_token', resolvedToken);
+          safeSessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
         }
       } catch {}
 
@@ -155,8 +180,8 @@ export function initAuth(
     } else {
       // Check sessionStorage for mock quick-admin
       try {
-        const storedUser = sessionStorage.getItem('ccam_auth_user');
-        const storedToken = sessionStorage.getItem('ccam_auth_token');
+        const storedUser = safeSessionStorage.getItem('ccam_auth_user');
+        const storedToken = safeSessionStorage.getItem('ccam_auth_token');
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser);
           cachedAuthUser = parsedUser;
@@ -182,17 +207,17 @@ export function initAuth(
       };
 
       const token = session.provider_token || session.access_token || null;
-      const storedToken = sessionStorage.getItem('ccam_auth_token');
+      const storedToken = safeSessionStorage.getItem('ccam_auth_token');
       const resolvedToken = token || storedToken || null;
 
       cachedAccessToken = resolvedToken;
       cachedAuthUser = authUser;
 
       try {
-        sessionStorage.setItem('ccam_auth_user', JSON.stringify(authUser));
+        safeSessionStorage.setItem('ccam_auth_user', JSON.stringify(authUser));
         if (resolvedToken) {
-          sessionStorage.setItem('ccam_auth_token', resolvedToken);
-          sessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
+          safeSessionStorage.setItem('ccam_auth_token', resolvedToken);
+          safeSessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
         }
       } catch {}
 
@@ -201,8 +226,8 @@ export function initAuth(
     } else {
       // Check sessionStorage for mock quick-admin
       try {
-        const storedUser = sessionStorage.getItem('ccam_auth_user');
-        const storedToken = sessionStorage.getItem('ccam_auth_token');
+        const storedUser = safeSessionStorage.getItem('ccam_auth_user');
+        const storedToken = safeSessionStorage.getItem('ccam_auth_token');
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser);
           cachedAuthUser = parsedUser;
@@ -293,9 +318,9 @@ export async function signInWithDirectToken(
   cachedAuthUser = user;
 
   try {
-    sessionStorage.setItem('ccam_auth_user', JSON.stringify(user));
-    sessionStorage.setItem('ccam_auth_token', trimmed);
-    sessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
+    safeSessionStorage.setItem('ccam_auth_user', JSON.stringify(user));
+    safeSessionStorage.setItem('ccam_auth_token', trimmed);
+    safeSessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
   } catch {}
 
   notifyAuthListeners();
@@ -323,13 +348,13 @@ export function setAccessToken(token: string | null) {
   cachedAccessToken = token;
   if (token) {
     try {
-      sessionStorage.setItem('ccam_auth_token', token);
-      sessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
+      safeSessionStorage.setItem('ccam_auth_token', token);
+      safeSessionStorage.setItem('ccam_auth_token_saved_at', String(Date.now()));
     } catch {}
   } else {
     try {
-      sessionStorage.removeItem('ccam_auth_token');
-      sessionStorage.removeItem('ccam_auth_token_saved_at');
+      safeSessionStorage.removeItem('ccam_auth_token');
+      safeSessionStorage.removeItem('ccam_auth_token_saved_at');
     } catch {}
   }
 }
@@ -340,7 +365,7 @@ export function setAccessToken(token: string | null) {
 export function isTokenExpired(): boolean {
   if (!cachedAccessToken) return true;
   try {
-    const savedAt = sessionStorage.getItem('ccam_auth_token_saved_at');
+    const savedAt = safeSessionStorage.getItem('ccam_auth_token_saved_at');
     if (!savedAt) return false;
     const elapsed = Date.now() - Number(savedAt);
     return elapsed > 55 * 60 * 1000;
@@ -372,8 +397,8 @@ export function isAuthExpiredError(error: any): boolean {
 export function handleTokenExpiry(): void {
   cachedAccessToken = null;
   try {
-    sessionStorage.removeItem('ccam_auth_token');
-    sessionStorage.removeItem('ccam_auth_token_saved_at');
+    safeSessionStorage.removeItem('ccam_auth_token');
+    safeSessionStorage.removeItem('ccam_auth_token_saved_at');
   } catch {}
   notifyAuthListeners();
 }
@@ -385,9 +410,9 @@ export async function logout(): Promise<void> {
   cachedAccessToken = null;
   cachedAuthUser = null;
   try {
-    sessionStorage.removeItem('ccam_auth_user');
-    sessionStorage.removeItem('ccam_auth_token');
-    sessionStorage.removeItem('ccam_auth_token_saved_at');
+    safeSessionStorage.removeItem('ccam_auth_user');
+    safeSessionStorage.removeItem('ccam_auth_token');
+    safeSessionStorage.removeItem('ccam_auth_token_saved_at');
   } catch {}
 
   const client = getSupabaseClient();

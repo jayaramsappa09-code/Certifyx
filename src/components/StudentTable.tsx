@@ -68,10 +68,8 @@ import {
   CampusRole,
 } from '../types';
 import { CAMPUS_ROLES, filterStudentsByRole } from '../services/campusRoleConfig';
-import { QuotaQueueMonitorModal } from './QuotaQueueMonitorModal';
 import { isStudentMatchingDateRange, getLatestStudentActivity, getStudentActivityEvents } from '../utils/dateFilterUtils';
 import { parseSearchQuery, isStudentMatchingAdvancedQuery } from '../utils/advancedSearchAndMatchEngine';
-import { DataMismatchSection } from './DataMismatchSection';
 import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 import { BatchImportStudentsModal } from './BatchImportStudentsModal';
 import { RosterManagementModal } from './RosterManagementModal';
@@ -1591,24 +1589,6 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* 0. Dedicated Data Mismatch & Reconciliation Analyzer Section */}
-      <DataMismatchSection
-        students={students}
-        sheetRows={sheetRows}
-        driveFiles={driveFiles}
-        initialAnalysis={reconciliationAnalysis}
-        onFilterTableByMismatch={(filterKey) => {
-          if (filterKey === 'MISSING_SHEET') setActiveFilter('SHEET_PENDING');
-          else if (filterKey === 'MISSING_DRIVE') setActiveFilter('DRIVE_PENDING');
-          else if (filterKey === 'COUNT_MISMATCH') setActiveFilter('COUNT_MISMATCH');
-          else setActiveFilter(filterKey);
-        }}
-        onOpenStudentDetails={onOpenDetails}
-        onOpenEmailReminder={onOpenEmailReminder}
-        onOpenDataHealthReport={onOpenDataHealthReport}
-        onToast={onToast}
-      />
-
       {/* Dedicated Permanent Class Roster Management Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950/40 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -3738,11 +3718,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
           onToast={onToast}
         />
 
-        {/* Client-Side Google Drive API Quota Engine Modal (15 req/sec Rate Limiter) */}
-        <QuotaQueueMonitorModal
-          isOpen={showQuotaQueueModal}
-          onClose={() => setShowQuotaQueueModal(false)}
-        />
+
 
         {/* Student Verification QR Code Modal */}
         <StudentQRCodeModal

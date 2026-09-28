@@ -118,7 +118,6 @@ import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
 import { AndroidAppDownloadModal } from './components/AndroidAppDownloadModal';
 import { DashboardPWAInstallCTA } from './components/DashboardPWAInstallCTA';
 import { EmailReminderModal } from './components/EmailReminderModal';
-import { DataHealthView } from './components/DataHealthView';
 import { DashboardDriveOrganizerHub } from './components/DashboardDriveOrganizerHub';
 import { DateRangeFilterBar } from './components/DateRangeFilterBar';
 import {
@@ -260,6 +259,16 @@ export default function App() {
 
   // UI Navigation & Modals
   const [activeTab, setActiveTab] = useState<'dashboard' | 'review' | 'integration' | 'history' | 'audit' | 'docs'>('dashboard');
+  const [showSystemControlsModal, setShowSystemControlsModal] = useState(false);
+  const [systemControlsTab, setSystemControlsTab] = useState<'integration' | 'history' | 'audit' | 'docs'>('integration');
+
+  useEffect(() => {
+    if (activeTab === 'integration' || activeTab === 'history' || activeTab === 'audit' || activeTab === 'docs') {
+      setSystemControlsTab(activeTab);
+      setShowSystemControlsModal(true);
+      setActiveTab('dashboard');
+    }
+  }, [activeTab]);
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
   const [dateFilterConfig, setDateFilterConfig] = useState<DateRangeFilterConfig>({
     preset: 'ALL_TIME',
@@ -2142,11 +2151,11 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
       {/* Header */}
       <Header
         user={currentUser}
-        activeTab={activeTab}
+        activeTab={activeTab === 'review' ? 'review' : 'dashboard'}
         setActiveTab={setActiveTab}
         onSyncNow={handleSyncNow}
         onOpenSheetProof={() => setShowSheetProofModal(true)}
-        onOpenDataHealthReport={() => setShowDataHealthReportModal(true)}
+        onOpenSystemControls={() => setShowSystemControlsModal(true)}
         onOpenExportCenter={() => setShowExportCenterModal(true)}
         onOpenAndroidDownloadModal={() => setShowAndroidDownloadModal(true)}
         isSyncing={isSyncing}
@@ -2241,6 +2250,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               submittedCount={submittedCount}
               completedCount={completedCount}
               pendingCount={pendingCount}
+              notStartedCount={notStartedCount}
               unidentifiedCount={unidentifiedFiles.length}
               outsideClassCount={outsideClassFiles.length}
               activeFilter={activeFilter}
@@ -2269,7 +2279,6 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               ambiguousCertFiles={ambiguousCertFiles}
               onToast={showToast}
               onOpenSheetProof={() => setShowSheetProofModal(true)}
-              onOpenDataHealth={() => setShowDataHealthReportModal(true)}
             />
 
             {/* Student Table Review Work Area - Primary Focal Point */}
@@ -2311,7 +2320,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                   setTargetStudentForReminder(targetStudent || null);
                   setShowEmailReminderModal(true);
                 }}
-                onOpenDataHealthReport={() => setShowDataHealthReportModal(true)}
+                onOpenDataHealthReport={() => setShowSystemControlsModal(true)}
                 onAddRosterStudent={handleAddRosterStudent}
                 onBatchAddRosterStudents={handleBatchAddRosterStudents}
                 onEditRosterStudent={handleEditRosterStudent}
@@ -2417,57 +2426,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
           </ErrorBoundary>
         )}
 
-        {/* Tab 3: Google Integration Settings */}
-        {activeTab === 'integration' && (
-          <ErrorBoundary sectionName="Google Integration Settings">
-            <GoogleIntegrationTab
-              accessToken={accessToken}
-              userEmail={currentUser?.email || 'admin'}
-              driveConfig={driveConfig}
-              sheetConfig={sheetConfig}
-              settings={settings}
-              onUpdateDriveConfig={(c) => {
-                setDriveConfig(c);
-                saveDriveConfig(c);
-              }}
-              onUpdateSheetConfig={(c) => {
-                setSheetConfig(c);
-                saveSheetConfig(c);
-              }}
-              onUpdateSettings={(newSettings) => {
-                const updated = saveAppSettings(newSettings);
-                setSettings(updated);
-              }}
-              onConnectGoogle={handleGoogleLogin}
-              onOpenConnectOptions={() => handleGoogleLogin(true)}
-              onOpenSheetProof={() => setShowGapDetailModal(true)}
-              onDisconnectGoogle={handleGoogleLogout}
-              onTriggerSync={handleSyncNow}
-            />
-          </ErrorBoundary>
-        )}
 
-        {/* Tab 4: Sync Run History */}
-        {activeTab === 'history' && (
-          <SyncHistoryTab
-            history={syncHistory}
-            onSelectReport={(r) => {
-              setLastSyncReport(r);
-              setShowSyncReportModal(true);
-            }}
-          />
-        )}
-
-        {/* Tab 5: Audit Logs */}
-        {activeTab === 'audit' && (
-          <AuditLogTab
-            logs={auditLogs}
-            onRefresh={() => setAuditLogs(getAuditLogs())}
-          />
-        )}
-
-        {/* Tab 6: Setup & Documentation */}
-        {activeTab === 'docs' && <DocumentationTab />}
       </main>
 
       {showExportCenterModal && (
@@ -2587,46 +2546,149 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         />
       )}
 
-      {/* Email Automation & Reminder Suite Modal */}
-      {/* Data Health Report Overlay */}
-      {showDataHealthReportModal && (
+      {/* System Controls & Settings Modal */}
+      {showSystemControlsModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setShowDataHealthReportModal(false);
+            if (e.target === e.currentTarget) setShowSystemControlsModal(false);
           }}
         >
-          <div className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-800 bg-slate-900 p-4 shadow-2xl">
-            <div className="sticky top-0 z-10 mb-4 flex items-center justify-between border-b border-slate-800 bg-slate-900 pb-3">
-              <h3 className="text-lg font-bold text-white">Data Health & Reconciliation Report</h3>
+          <div className="relative w-full max-w-6xl h-[85vh] flex flex-col rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-850 bg-slate-950 px-6 py-4">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">⚙️</span>
+                <div>
+                  <h3 className="text-base font-bold text-white leading-tight">System Controls &amp; Settings</h3>
+                  <p className="text-[10px] text-slate-400">Configure integrations, review sync history, inspect audit logs, and view manuals.</p>
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={() => setShowDataHealthReportModal(false)}
-                className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-slate-600 hover:text-white"
+                onClick={() => setShowSystemControlsModal(false)}
+                className="rounded-xl border border-slate-850 bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-slate-700 hover:text-white cursor-pointer"
               >
                 Close
               </button>
             </div>
-            <DataHealthView
-              students={studentStatuses}
-              sheetRows={sheetSyncProof?.rows || []}
-              driveFiles={Array.from(
-                new Map(
-                  [
-                    ...studentStatuses.flatMap((s) => s.driveFiles || []),
-                    ...unidentifiedFiles,
-                    ...outsideClassFiles,
-                    ...duplicateFiles,
-                  ]
-                    .filter(Boolean)
-                    .map((f) => [f.id || f.name, f])
-                ).values()
-              )}
-              unidentifiedFiles={unidentifiedFiles}
-              outsideClassFiles={outsideClassFiles}
-              accessToken={accessToken}
-              onToast={showToast}
-            />
+
+            {/* Modal Content layout (Sidebar + Main area) */}
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+              {/* Sidebar Tabs */}
+              <div className="w-full md:w-64 bg-slate-950/50 border-r border-slate-850 p-4 space-y-1.5 flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSystemControlsTab('integration')}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
+                    systemControlsTab === 'integration'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                  }`}
+                >
+                  <span className="text-sm">📂</span>
+                  <span>Google Integration</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSystemControlsTab('history')}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
+                    systemControlsTab === 'history'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                  }`}
+                >
+                  <span className="text-sm">⏱️</span>
+                  <span>Sync Run History</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSystemControlsTab('audit')}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
+                    systemControlsTab === 'audit'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                  }`}
+                >
+                  <span className="text-sm">🛡️</span>
+                  <span>Administrative Audit Log</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSystemControlsTab('docs')}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
+                    systemControlsTab === 'docs'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                  }`}
+                >
+                  <span className="text-sm">📖</span>
+                  <span>Setup &amp; Verification Manual</span>
+                </button>
+              </div>
+
+              {/* Main Panel Content Area */}
+              <div className="flex-1 p-5 overflow-y-auto bg-slate-900/40">
+                {systemControlsTab === 'integration' && (
+                  <ErrorBoundary sectionName="Google Integration Settings">
+                    <GoogleIntegrationTab
+                      accessToken={accessToken}
+                      userEmail={currentUser?.email || 'admin'}
+                      driveConfig={driveConfig}
+                      sheetConfig={sheetConfig}
+                      settings={settings}
+                      onUpdateDriveConfig={(c) => {
+                        setDriveConfig(c);
+                        saveDriveConfig(c);
+                      }}
+                      onUpdateSheetConfig={(c) => {
+                        setSheetConfig(c);
+                        saveSheetConfig(c);
+                      }}
+                      onUpdateSettings={(newSettings) => {
+                        const updated = saveAppSettings(newSettings);
+                        setSettings(updated);
+                      }}
+                      onConnectGoogle={handleGoogleLogin}
+                      onOpenConnectOptions={() => handleGoogleLogin(true)}
+                      onOpenSheetProof={() => setShowGapDetailModal(true)}
+                      onDisconnectGoogle={handleGoogleLogout}
+                      onTriggerSync={handleSyncNow}
+                    />
+                  </ErrorBoundary>
+                )}
+
+                {systemControlsTab === 'history' && (
+                  <ErrorBoundary sectionName="Sync History Settings">
+                    <SyncHistoryTab
+                      history={syncHistory}
+                      onSelectReport={(r) => {
+                        setLastSyncReport(r);
+                        setShowSyncReportModal(true);
+                      }}
+                    />
+                  </ErrorBoundary>
+                )}
+
+                {systemControlsTab === 'audit' && (
+                  <ErrorBoundary sectionName="Administrative Audit Log">
+                    <AuditLogTab
+                      logs={auditLogs}
+                      onRefresh={() => setAuditLogs(getAuditLogs())}
+                    />
+                  </ErrorBoundary>
+                )}
+
+                {systemControlsTab === 'docs' && (
+                  <ErrorBoundary sectionName="Setup & Documentation Manual">
+                    <DocumentationTab />
+                  </ErrorBoundary>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

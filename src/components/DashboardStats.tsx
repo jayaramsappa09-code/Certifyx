@@ -31,6 +31,7 @@ interface DashboardStatsProps {
   onSelectFilter: (filter: string) => void;
   onOpenEmailReminder?: () => void;
   onOpenAutoScheduler?: () => void;
+  notStartedCount?: number;
 }
 
 export const DashboardStats: React.FC<DashboardStatsProps> = ({
@@ -47,6 +48,7 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
   onSelectFilter,
   onOpenEmailReminder,
   onOpenAutoScheduler,
+  notStartedCount,
 }) => {
   const safeTotal = totalStudents > 0 ? totalStudents : 67;
   const completedPct = Math.round((completedCount / safeTotal) * 1000) / 10;
@@ -54,6 +56,15 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
   const sheetPct = Math.round((sheetUpdatedCount / safeTotal) * 100);
   const submittedPct = Math.round((submittedCount / safeTotal) * 100);
   const remainingDefaulters = safeTotal - completedCount;
+
+  // Calculate high-fidelity precise percentages for concentric progress rings
+  const resolvedNotStartedCount = typeof notStartedCount === 'number'
+    ? notStartedCount
+    : Math.max(0, safeTotal - completedCount - pendingCount);
+
+  const completedPctPrecise = (completedCount / safeTotal) * 100;
+  const pendingPctPrecise = (pendingCount / safeTotal) * 100;
+  const notStartedPctPrecise = (resolvedNotStartedCount / safeTotal) * 100;
 
   const cards = [
     {
@@ -164,7 +175,18 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
       bg: 'bg-slate-900/60',
       iconColor: 'text-slate-400',
     },
-  ];
+  ].filter((c) => {
+    if (c.id === 'UNIDENTIFIED') return unidentifiedCount > 0;
+    if (c.id === 'OUTSIDE_CLASS') return outsideClassCount > 0;
+    return true;
+  });
+
+  const gridColsClass =
+    cards.length === 7
+      ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 xl:grid-cols-7'
+      : cards.length === 8
+      ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8'
+      : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9';
 
   return (
     <div className="space-y-3.5">
@@ -213,37 +235,119 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
           </div>
 
           {/* Right Column: Visual Progress Indicator & Quick Actions */}
-          <div className="flex flex-col sm:flex-row items-stretch lg:items-center gap-4 shrink-0">
-            {/* Circular / Milestone Mini Gauge */}
-            <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center gap-3">
-              <div className="relative w-12 h-12 flex items-center justify-center">
-                <svg className="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
-                  <path
-                    className="text-slate-800"
-                    strokeWidth="3.5"
-                    stroke="currentColor"
+          <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-5 shrink-0">
+            {/* Compliance Progress Rings Component */}
+            <div className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-2xl flex items-center gap-4.5 shadow-inner max-w-sm sm:max-w-md w-full">
+              <div className="relative shrink-0 flex items-center justify-center">
+                <svg className="w-24 h-24 sm:w-26 sm:h-26 transform -rotate-90" viewBox="0 0 100 100">
+                  {/* Outer Ring: Completed */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    className="stroke-slate-850"
+                    strokeWidth="6"
+                    strokeOpacity="0.3"
                     fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                   />
-                  <path
-                    className="text-emerald-400 transition-all duration-1000 ease-out"
-                    strokeDasharray={`${completedPct}, 100`}
-                    strokeWidth="3.5"
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    className="stroke-emerald-500 transition-all duration-1000 ease-out"
+                    strokeWidth="6"
+                    strokeDasharray="251.3"
+                    strokeDashoffset={251.3 - (completedPctPrecise / 100) * 251.3}
                     strokeLinecap="round"
-                    stroke="currentColor"
                     fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+
+                  {/* Middle Ring: Pending */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="30"
+                    className="stroke-slate-850"
+                    strokeWidth="6"
+                    strokeOpacity="0.3"
+                    fill="none"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="30"
+                    className="stroke-amber-500 transition-all duration-1000 ease-out"
+                    strokeWidth="6"
+                    strokeDasharray="188.5"
+                    strokeDashoffset={188.5 - (pendingPctPrecise / 100) * 188.5}
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+
+                  {/* Inner Ring: Not Started */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="20"
+                    className="stroke-slate-850"
+                    strokeWidth="6"
+                    strokeOpacity="0.3"
+                    fill="none"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="20"
+                    className="stroke-rose-500 transition-all duration-1000 ease-out"
+                    strokeWidth="6"
+                    strokeDasharray="125.7"
+                    strokeDashoffset={125.7 - (notStartedPctPrecise / 100) * 125.7}
+                    strokeLinecap="round"
+                    fill="none"
                   />
                 </svg>
-                <span className="absolute text-[11px] font-mono font-bold text-white">
-                  {Math.round(completedPct)}%
-                </span>
+                {/* Overall Class Target Centered percentage */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-[13px] font-mono font-bold text-white leading-none">
+                    {Math.round(completedPctPrecise)}%
+                  </span>
+                  <span className="text-[8px] text-slate-400 font-semibold tracking-wider uppercase mt-0.5">Verified</span>
+                </div>
               </div>
 
-              <div className="text-xs space-y-0.5">
-                <div className="font-bold text-white">Overall Class Target</div>
-                <div className="text-[11px] text-slate-400 font-mono">
-                  {completedCount}/{safeTotal} Verified
+              <div className="flex flex-col gap-1.5 py-1">
+                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                  Compliance Rings
+                </div>
+                
+                {/* Completed Legend */}
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                  <div className="text-xs flex items-center gap-1.5">
+                    <span className="text-slate-300 font-medium">Verified:</span>
+                    <span className="font-mono font-bold text-white">{completedCount}</span>
+                    <span className="text-slate-500 font-mono text-[10px]">({completedPctPrecise.toFixed(1)}%)</span>
+                  </div>
+                </div>
+
+                {/* Pending Legend */}
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <div className="text-xs flex items-center gap-1.5">
+                    <span className="text-slate-300 font-medium">Pending:</span>
+                    <span className="font-mono font-bold text-white">{pendingCount}</span>
+                    <span className="text-slate-500 font-mono text-[10px]">({pendingPctPrecise.toFixed(1)}%)</span>
+                  </div>
+                </div>
+
+                {/* Not Started Legend */}
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                  <div className="text-xs flex items-center gap-1.5">
+                    <span className="text-slate-300 font-medium">Not Started:</span>
+                    <span className="font-mono font-bold text-white">{resolvedNotStartedCount}</span>
+                    <span className="text-slate-500 font-mono text-[10px]">({notStartedPctPrecise.toFixed(1)}%)</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -362,8 +466,8 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
         </div>
       </div>
 
-      {/* 2. 9-CARD METRIC GRID */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
+      {/* 2. dynamic columns METRIC GRID */}
+      <div className={`grid ${gridColsClass} gap-3`}>
         {cards.map((c) => {
           const Icon = c.icon;
           const isActive = activeFilter === c.id;
@@ -398,4 +502,5 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
     </div>
   );
 };
+
 

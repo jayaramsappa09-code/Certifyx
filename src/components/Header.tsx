@@ -25,8 +25,8 @@ import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   user: AuthUser | null;
-  activeTab: 'dashboard' | 'review' | 'integration' | 'history' | 'audit' | 'docs';
-  setActiveTab: (tab: 'dashboard' | 'review' | 'integration' | 'history' | 'audit' | 'docs') => void;
+  activeTab: 'dashboard' | 'review';
+  setActiveTab: (tab: 'dashboard' | 'review') => void;
   onSyncNow: () => void;
   onOpenSheetProof?: () => void;
   isSyncing: boolean;
@@ -43,7 +43,7 @@ interface HeaderProps {
   onQuickSyncPending?: () => void;
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
-  onOpenDataHealthReport?: () => void;
+  onOpenSystemControls: () => void;
   onOpenExportCenter?: () => void;
   onOpenAndroidDownloadModal?: () => void;
   rosterCount?: number;
@@ -70,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
   onQuickSyncPending,
   theme = 'dark',
   onToggleTheme,
-  onOpenDataHealthReport,
+  onOpenSystemControls,
   onOpenExportCenter,
   onOpenAndroidDownloadModal,
   rosterCount,
@@ -165,18 +165,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Data Health Report Quick Trigger - Hidden when offline */}
-          {isOnline && onOpenDataHealthReport && (
-            <button
-              type="button"
-              onClick={onOpenDataHealthReport}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 hover:bg-teal-600/20 text-teal-400 border border-teal-500/30 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer"
-              title="Run automated Data Health Report scan on Google Sheet & Drive records"
-            >
-              <Activity className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Data Health</span>
-            </button>
-          )}
+
 
           {/* Export Center Button */}
           {isOnline && onOpenExportCenter && (
@@ -280,7 +269,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Mobile Navigation Dropdown (Visible on small screens) */}
-      <div className="md:hidden px-4 py-2 border-t border-slate-800/80 bg-slate-950/70">
+      <div className="md:hidden px-4 py-2 border-t border-slate-800/80 bg-slate-950/70 flex gap-2">
         <label htmlFor="mobile-tab-select" className="sr-only">
           Select View Tab
         </label>
@@ -288,105 +277,63 @@ export const Header: React.FC<HeaderProps> = ({
           id="mobile-tab-select"
           value={activeTab}
           onChange={(e) => setActiveTab(e.target.value as any)}
-          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-semibold text-slate-100 focus:outline-none focus:border-blue-500"
+          className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-semibold text-slate-100 focus:outline-none focus:border-blue-500"
         >
           <option value="dashboard">📊 Dashboard &amp; Class Roster ({rosterCount || 67})</option>
           <option value="review">⚠️ Needs Review ({reviewCount})</option>
-          <option value="integration">📂 Google Integration (Drive &amp; Sheets)</option>
-          <option value="history">⏱️ Sync History</option>
-          <option value="audit">🛡️ Audit Log</option>
-          <option value="docs">📖 Setup &amp; Verification</option>
         </select>
+        <button
+          type="button"
+          onClick={onOpenSystemControls}
+          className="px-3 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0"
+        >
+          ⚙️ Controls
+        </button>
       </div>
 
       {/* Navigation Tabs Bar (Desktop & Horizontal Scrollable) */}
-      <nav aria-label="Main Navigation" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center space-x-1 sm:space-x-2 overflow-x-auto py-1.5 scrollbar-none border-t border-slate-800/60">
-        <button
-          type="button"
-          onClick={() => setActiveTab('dashboard')}
-          className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition whitespace-nowrap cursor-pointer touch-manipulation ${
-            activeTab === 'dashboard'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
-          }`}
-        >
-          <FolderSync className="w-4 h-4" />
-          <span>Dashboard &amp; Class Roster {rosterCount ? `(${rosterCount})` : ''}</span>
-        </button>
+      <nav aria-label="Main Navigation" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between overflow-x-auto py-1.5 scrollbar-none border-t border-slate-800/60">
+        <div className="flex items-center space-x-1 sm:space-x-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('dashboard')}
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition whitespace-nowrap cursor-pointer touch-manipulation ${
+              activeTab === 'dashboard'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
+            }`}
+          >
+            <FolderSync className="w-4 h-4" />
+            <span>Dashboard &amp; Class Roster {rosterCount ? `(${rosterCount})` : ''}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('review')}
+            className={`shrink-0 relative flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition whitespace-nowrap cursor-pointer touch-manipulation ${
+              activeTab === 'review'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4" />
+            <span>Needs Review</span>
+            {reviewCount > 0 && (
+              <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                activeTab === 'review' ? 'bg-white text-amber-700' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+              }`}>
+                {reviewCount}
+              </span>
+            )}
+          </button>
+        </div>
 
         <button
           type="button"
-          onClick={() => setActiveTab('review')}
-          className={`shrink-0 relative flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition whitespace-nowrap cursor-pointer touch-manipulation ${
-            activeTab === 'review'
-              ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
-              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
-          }`}
+          onClick={onOpenSystemControls}
+          className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-bold bg-slate-900 border border-slate-805 hover:bg-slate-800 text-slate-200 hover:text-white rounded-xl transition whitespace-nowrap cursor-pointer shadow-sm shadow-slate-950/20"
         >
-          <AlertTriangle className="w-4 h-4" />
-          <span>Needs Review</span>
-          {reviewCount > 0 && (
-            <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-              activeTab === 'review' ? 'bg-white text-amber-700' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-            }`}>
-              {reviewCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('integration')}
-          className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition whitespace-nowrap cursor-pointer touch-manipulation ${
-            activeTab === 'integration'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
-          }`}
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          <span>Google Integration</span>
-          {!isGoogleConnected && (
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Setup needed"></span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('history')}
-          className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition whitespace-nowrap cursor-pointer touch-manipulation ${
-            activeTab === 'history'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
-          }`}
-        >
-          <History className="w-4 h-4" />
-          <span>Sync History</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('audit')}
-          className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition whitespace-nowrap cursor-pointer touch-manipulation ${
-            activeTab === 'audit'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>Audit Log</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('docs')}
-          className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition whitespace-nowrap cursor-pointer touch-manipulation ${
-            activeTab === 'docs'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Setup &amp; Verification</span>
+          <span>⚙️ System Controls &amp; Settings</span>
         </button>
       </nav>
     </header>
