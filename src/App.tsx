@@ -475,6 +475,20 @@ export default function App() {
     }
   }, []);
 
+  // URL Deep Link Handler for QR Code Scans (?rollNo=25A31A05GB)
+  useEffect(() => {
+    if (typeof window === 'undefined' || studentStatuses.length === 0) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetRoll = urlParams.get('rollNo') || urlParams.get('student');
+    if (targetRoll) {
+      const cleanRoll = targetRoll.toUpperCase().trim();
+      const found = studentStatuses.find((s) => s.rollNo.toUpperCase().trim() === cleanRoll);
+      if (found) {
+        setSelectedStudentForDetail(found);
+      }
+    }
+  }, [studentStatuses]);
+
   // Fetch from Supabase on start to overwrite or update local state
   useEffect(() => {
     async function loadFromSupabase() {

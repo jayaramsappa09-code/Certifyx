@@ -56,7 +56,9 @@ import {
   Gauge,
   Zap,
   ShieldCheck,
+  QrCode,
 } from 'lucide-react';
+import { StudentQRCodeModal } from './StudentQRCodeModal';
 import {
   StudentStatusRecord,
   DateRangeFilterConfig,
@@ -211,6 +213,7 @@ interface StudentExpandedDetailsCardProps {
   onToggleExpand: (rollNo: string) => void;
   copiedRollNo: string | null;
   onCopyLink: (file: { webViewLink?: string; id?: string }, rollNo: string) => void;
+  onOpenQRCode?: (student: StudentStatusRecord) => void;
 }
 
 export const StudentExpandedDetailsCard: React.FC<StudentExpandedDetailsCardProps> = ({
@@ -227,6 +230,7 @@ export const StudentExpandedDetailsCard: React.FC<StudentExpandedDetailsCardProp
   onToggleExpand,
   copiedRollNo,
   onCopyLink,
+  onOpenQRCode,
 }) => {
   const totalCerts = student.certificates.length || student.driveFiles.length;
   const events = getStudentActivityEvents(student);
@@ -297,6 +301,18 @@ export const StudentExpandedDetailsCard: React.FC<StudentExpandedDetailsCardProp
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {onOpenQRCode && (
+            <button
+              type="button"
+              onClick={() => onOpenQRCode(student)}
+              className="px-3 py-1.5 bg-purple-950 hover:bg-purple-900 text-purple-300 border border-purple-800/80 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Generate QR Code for quick student status check & certificate upload"
+            >
+              <QrCode className="w-3.5 h-3.5 text-purple-400" />
+              <span>QR Code</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => onOpenDetails(student)}
@@ -864,6 +880,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onToast,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStudentForQRCode, setSelectedStudentForQRCode] = useState<StudentStatusRecord | null>(null);
   const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -3048,6 +3065,14 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                           )}
                           <button
                             type="button"
+                            onClick={() => setSelectedStudentForQRCode(student)}
+                            className="p-1.5 text-slate-400 hover:text-purple-400 hover:bg-slate-800 rounded-lg transition cursor-pointer touch-manipulation"
+                            title="Generate QR Code for quick student status check & certificate upload"
+                          >
+                            <QrCode className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => onOpenDetails(student)}
                             className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer touch-manipulation"
                             title="View student details & all individual certificates"
@@ -3069,6 +3094,15 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                         {/* Popover Hover Quick Actions Toolbar */}
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 pointer-events-none group-hover:pointer-events-auto flex items-center bg-slate-950/95 border border-slate-800 shadow-2xl rounded-xl p-1 gap-1 z-10 border-blue-500/30">
                           <span className="text-[10px] uppercase font-bold text-slate-400 px-2 font-mono tracking-wider">Quick Actions:</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStudentForQRCode(student)}
+                            className="px-2.5 py-1 bg-purple-950 hover:bg-purple-900 border border-purple-800/60 text-purple-300 font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                            title="Generate QR Code for student status and upload portal"
+                          >
+                            <QrCode className="w-3 h-3 text-purple-400" />
+                            <span>QR Code</span>
+                          </button>
                           <button
                             type="button"
                             onClick={() => onOpenDetails(student)}
@@ -3127,6 +3161,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                             onToggleExpand={handleToggleExpand}
                             copiedRollNo={copiedRollNo}
                             onCopyLink={handleCopyLink}
+                            onOpenQRCode={(s) => setSelectedStudentForQRCode(s)}
                           />
                         </td>
                       </tr>
@@ -3707,6 +3742,15 @@ export const StudentTable: React.FC<StudentTableProps> = ({
         <QuotaQueueMonitorModal
           isOpen={showQuotaQueueModal}
           onClose={() => setShowQuotaQueueModal(false)}
+        />
+
+        {/* Student Verification QR Code Modal */}
+        <StudentQRCodeModal
+          student={selectedStudentForQRCode}
+          isOpen={Boolean(selectedStudentForQRCode)}
+          onClose={() => setSelectedStudentForQRCode(null)}
+          onOpenDetails={onOpenDetails}
+          onToast={onToast}
         />
     </div>
   );
