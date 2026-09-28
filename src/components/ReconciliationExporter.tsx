@@ -130,19 +130,22 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
       )}
 
       {exportedFolderUrl && !isExporting && (
-        <div className="mt-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between">
+        <div className="mt-2 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-3">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span className="text-[11px] text-emerald-300 font-medium">Export completed successfully!</span>
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <span className="text-sm text-emerald-300 font-bold">Export completed successfully!</span>
           </div>
+          <p className="text-xs text-emerald-400/80">
+            A new folder has been created with all matched certificates renamed for organization.
+          </p>
           <a
             href={exportedFolderUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] text-emerald-400 font-bold flex items-center gap-1 hover:underline"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-emerald-600/30 transition w-full justify-center"
           >
-            <span>View Folder</span>
-            <ExternalLink className="w-3 h-3" />
+            <span>OPEN EXPORTED DRIVE FOLDER</span>
+            <ExternalLink className="w-4 h-4" />
           </a>
         </div>
       )}

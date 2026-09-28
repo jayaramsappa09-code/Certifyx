@@ -1621,24 +1621,25 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                             </div>
                             {/* Fast individual certificate preview file chips */}
                             {student.driveFiles.length > 0 && (
-                              <div className="flex flex-wrap items-center gap-1 text-[10px] text-slate-400 font-mono">
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                 {student.driveFiles.slice(0, 3).map((f, fIdx) => (
                                   <a
                                     key={f.id || fIdx}
                                     href={f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="hover:text-blue-400 hover:underline bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 truncate max-w-[140px] inline-block"
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 text-[10px] font-bold transition shadow-sm"
                                     title={`Open Drive File: ${f.name}`}
                                   >
-                                    📄 {f.name}
+                                    <ExternalLink className="w-2.5 h-2.5" />
+                                    <span className="truncate max-w-[100px]">{f.name}</span>
                                   </a>
                                 ))}
                                 {student.driveFiles.length > 3 && (
                                   <button
                                     type="button"
                                     onClick={() => onOpenDetails(student)}
-                                    className="text-blue-400 hover:underline cursor-pointer"
+                                    className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-blue-400 font-bold hover:bg-slate-800 transition cursor-pointer"
                                   >
                                     +{student.driveFiles.length - 3} more
                                   </button>

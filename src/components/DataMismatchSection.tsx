@@ -46,6 +46,10 @@ export const DataMismatchSection: React.FC<DataMismatchSectionProps> = ({
     integrityScore: 0,
   };
 
+  const driveFolderUrl = students[0]?.driveFiles?.[0]?.parentFolderId 
+    ? `https://drive.google.com/drive/folders/${students[0].driveFiles[0].parentFolderId}`
+    : null;
+
   return (
     <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -60,6 +64,17 @@ export const DataMismatchSection: React.FC<DataMismatchSectionProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {driveFolderUrl && (
+            <a
+              href={driveFolderUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1.5 rounded-lg border border-blue-700 bg-blue-950/60 text-blue-200 text-[11px] font-semibold hover:bg-blue-900/70 transition cursor-pointer flex items-center gap-1.5"
+            >
+              <HardDrive className="w-3.5 h-3.5" />
+              Open Drive
+            </a>
+          )}
           <button
             type="button"
             onClick={() => onFilterTableByMismatch?.('COUNT_MISMATCH')}

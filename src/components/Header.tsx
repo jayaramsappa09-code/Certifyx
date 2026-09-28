@@ -43,6 +43,7 @@ interface HeaderProps {
   onToggleTheme?: () => void;
   onOpenDataHealthReport?: () => void;
   rosterCount?: number;
+  driveFolderId?: string | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -67,7 +68,10 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   onOpenDataHealthReport,
   rosterCount,
+  driveFolderId,
 }) => {
+  const driveFolderUrl = driveFolderId ? `https://drive.google.com/drive/folders/${driveFolderId}` : null;
+
   return (
     <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white">
       {/* Top Banner Bar */}
@@ -94,6 +98,20 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Sync Controls & User Profile */}
         <div className="flex items-center gap-2.5">
+          {/* Drive Folder Shortcut */}
+          {driveFolderUrl && (
+            <a
+              href={driveFolderUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 text-xs font-semibold rounded-xl transition"
+              title="Open managed Google Drive folder in a new tab"
+            >
+              <FolderSync className="w-3.5 h-3.5" />
+              <span>Drive Folder</span>
+            </a>
+          )}
+
           {/* Offline / Pending Updates Connectivity Indicator */}
           <ConnectivityStatusIndicator
             isOnline={isOnline}

@@ -2048,6 +2048,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         theme={theme}
         onToggleTheme={handleToggleTheme}
         rosterCount={studentStatuses.length}
+        driveFolderId={driveConfig?.folderId}
       />
 
       {/* Main Content Area */}
