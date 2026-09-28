@@ -117,6 +117,7 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
     `Class_Certificates_${new Date().toISOString().split('T')[0]}`
   );
   const [exportStructure, setExportStructure] = useState<DriveExportStructure>('CATEGORY_TOP');
+  const [preserveExactFileName, setPreserveExactFileName] = useState<boolean>(true);
   const [progress, setProgress] = useState({ current: 0, total: 0, status: '' });
   const [exportedFolderUrl, setExportedFolderUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -400,12 +401,11 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
           destinationLabel = `${studentFolderName}/`;
         }
 
-        // Format new file name: includes Roll Number + Category/Title
-        const cleanOriginalName = file.name.replace(/\.[a-zA-Z0-9]+$/, '');
-        const extension = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '.pdf';
-
+        // Format file name: when preserveExactFileName is active (default), keep 100% exact original filename without any new prefixes or names
         let formattedFileName = file.name;
-        if (currentStructure === 'CATEGORY_TOP') {
+        if (!preserveExactFileName && currentStructure === 'CATEGORY_TOP') {
+          const cleanOriginalName = file.name.replace(/\.[a-zA-Z0-9]+$/, '');
+          const extension = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '.pdf';
           if (!cleanOriginalName.toLowerCase().includes(student.rollNo.toLowerCase())) {
             formattedFileName = `${student.rollNo}_${cleanOriginalName}${extension}`;
           }
@@ -676,6 +676,43 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
           </div>
         </div>
       )}
+
+      {/* File Naming Discipline Control */}
+      <div className="flex items-center justify-between p-3.5 bg-slate-900/90 border border-slate-800 rounded-2xl hover:border-slate-700 transition">
+        <div className="flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
+            preserveExactFileName
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : 'bg-slate-800 border-slate-700 text-slate-400'
+          }`}>
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <div>
+            <label htmlFor="preserve-filename-chk" className="text-xs font-bold text-white cursor-pointer flex items-center gap-2">
+              <span>Preserve Exact Original Filename</span>
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-semibold">
+                No New Names or Prefixes
+              </span>
+            </label>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {preserveExactFileName
+                ? 'Files are copied to Google Drive with 100% untouched original names (no roll number prefix or modification).'
+                : 'Custom naming: Roll number prefix will be prepended where needed.'}
+            </p>
+          </div>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            id="preserve-filename-chk"
+            type="checkbox"
+            checked={preserveExactFileName}
+            onChange={(e) => setPreserveExactFileName(e.target.checked)}
+            disabled={isExporting}
+            className="sr-only peer"
+          />
+          <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+        </label>
+      </div>
 
       {/* Target Folder Name Input & Start Button */}
       <div className="flex flex-col sm:flex-row items-end gap-3 pt-1">

@@ -115,6 +115,7 @@ import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
 import { EmailReminderModal } from './components/EmailReminderModal';
 import { DataHealthView } from './components/DataHealthView';
+import { DashboardDriveOrganizerHub } from './components/DashboardDriveOrganizerHub';
 import { DateRangeFilterBar } from './components/DateRangeFilterBar';
 import {
   DateRangeFilterConfig,
@@ -2163,6 +2164,21 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                 setTargetStudentForReminder(null);
                 setShowEmailReminderModal(true);
               }}
+            />
+
+            {/* Dashboard Drive Organizer, File Exporters & 5000-User Enterprise Blueprint */}
+            <DashboardDriveOrganizerHub
+              students={studentStatuses}
+              accessToken={accessToken}
+              sheetSyncProof={sheetSyncProof}
+              auditLogs={auditLogs}
+              unidentifiedFiles={unidentifiedFiles}
+              outsideClassFiles={outsideClassFiles}
+              duplicateFiles={duplicateFiles}
+              ambiguousCertFiles={ambiguousCertFiles}
+              onToast={showToast}
+              onOpenSheetProof={() => setShowSheetProofModal(true)}
+              onOpenDataHealth={() => setShowDataHealthReportModal(true)}
             />
 
             {/* Student Table Review Work Area - Primary Focal Point */}
