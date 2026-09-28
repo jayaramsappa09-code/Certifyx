@@ -125,7 +125,7 @@ import {
 } from './types';
 import { isStudentMatchingDateRange, getLatestStudentActivity, DateRangeAnalysisResult } from './utils/dateFilterUtils';
 import { calculateOverallStatus } from './utils/statusEngine';
-import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet, Layers } from 'lucide-react';
+import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet, Layers, TrendingUp } from 'lucide-react';
 
 const recalculateStudentMismatch = (
   s: StudentStatusRecord,
@@ -283,6 +283,7 @@ export default function App() {
   const [showExportCenterModal, setShowExportCenterModal] = useState(false);
   const [showAndroidDownloadModal, setShowAndroidDownloadModal] = useState(false);
   const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
+  const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [showEmailReminderModal, setShowEmailReminderModal] = useState(false);
   const [showEmailAutomationModal, setShowEmailAutomationModal] = useState(false);
   const [showAutoSchedulerModal, setShowAutoSchedulerModal] = useState(false);
@@ -2331,35 +2332,44 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
             </ErrorBoundary>
 
             {/* Collapsible Secondary Analytics Row & Filters */}
-            <details className="bg-slate-900/60 border border-slate-800 rounded-3xl p-4 shadow-md group transition-all">
-              <summary className="text-xs font-bold text-slate-400 group-hover:text-white cursor-pointer list-none flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
+            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-4 shadow-md transition-all">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
                   Advanced Analytics, Trends & Date Range Filtering
                 </span>
-                <span className="text-[10px] text-blue-400 font-semibold group-open:hidden">Show Analytics &amp; Charts</span>
-                <span className="text-[10px] text-slate-500 font-semibold hidden group-open:inline">Hide Analytics</span>
-              </summary>
-              <div className="mt-4 space-y-4 animate-fade-in-up">
-                {/* Date-Range Filter Bar & Submission Velocity Analytics */}
-                <DateRangeFilterBar
-                  students={studentStatuses}
-                  config={dateFilterConfig}
-                  onChangeConfig={setDateFilterConfig}
-                  onExportPeriodCsv={handleExportPeriodCsv}
-                />
-
-                {/* Status Distribution Recharts Bar Chart */}
-                <StatusDistributionChart
-                  totalStudents={studentStatuses.length || 67}
-                  completedCount={completedCount}
-                  pendingCount={pendingCount}
-                  notStartedCount={notStartedCount}
-                  activeFilter={activeFilter}
-                  onSelectFilter={setActiveFilter}
-                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedAnalytics(!showAdvancedAnalytics)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-blue-400 transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>{showAdvancedAnalytics ? 'Hide Analytics' : 'Show Analytics'}</span>
+                </button>
               </div>
-            </details>
+              
+              {showAdvancedAnalytics && (
+                <div className="mt-4 space-y-4 animate-fade-in-up">
+                  {/* Date-Range Filter Bar & Submission Velocity Analytics */}
+                  <DateRangeFilterBar
+                    students={studentStatuses}
+                    config={dateFilterConfig}
+                    onChangeConfig={setDateFilterConfig}
+                    onExportPeriodCsv={handleExportPeriodCsv}
+                  />
+
+                  {/* Status Distribution Recharts Bar Chart */}
+                  <StatusDistributionChart
+                    totalStudents={studentStatuses.length || 67}
+                    completedCount={completedCount}
+                    pendingCount={pendingCount}
+                    notStartedCount={notStartedCount}
+                    activeFilter={activeFilter}
+                    onSelectFilter={setActiveFilter}
+                  />
+                </div>
+              )}
+            </div>
 
             {/* Sheet Sync Proof Quick Banner - Collateral Audit Inspector */}
             <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">

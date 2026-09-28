@@ -15,8 +15,17 @@ export function getSupabaseConfig(): SupabaseConfig {
   const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-  const storedUrl = typeof localStorage !== 'undefined' ? localStorage.getItem(SUPABASE_URL_STORAGE_KEY) || '' : '';
-  const storedKey = typeof localStorage !== 'undefined' ? localStorage.getItem(SUPABASE_ANON_KEY_STORAGE_KEY) || '' : '';
+  let storedUrl = '';
+  let storedKey = '';
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      storedUrl = localStorage.getItem(SUPABASE_URL_STORAGE_KEY) || '';
+      storedKey = localStorage.getItem(SUPABASE_ANON_KEY_STORAGE_KEY) || '';
+    }
+  } catch (e) {
+    console.warn('localStorage is not available for reading Supabase config:', e);
+  }
 
   return {
     url: storedUrl || envUrl || '',
@@ -28,12 +37,16 @@ export function getSupabaseConfig(): SupabaseConfig {
  * Save custom Supabase credentials to localStorage
  */
 export function saveSupabaseConfig(url: string, anonKey: string): void {
-  if (typeof localStorage !== 'undefined') {
-    if (url) localStorage.setItem(SUPABASE_URL_STORAGE_KEY, url.trim());
-    else localStorage.removeItem(SUPABASE_URL_STORAGE_KEY);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (url) localStorage.setItem(SUPABASE_URL_STORAGE_KEY, url.trim());
+      else localStorage.removeItem(SUPABASE_URL_STORAGE_KEY);
 
-    if (anonKey) localStorage.setItem(SUPABASE_ANON_KEY_STORAGE_KEY, anonKey.trim());
-    else localStorage.removeItem(SUPABASE_ANON_KEY_STORAGE_KEY);
+      if (anonKey) localStorage.setItem(SUPABASE_ANON_KEY_STORAGE_KEY, anonKey.trim());
+      else localStorage.removeItem(SUPABASE_ANON_KEY_STORAGE_KEY);
+    }
+  } catch (e) {
+    console.error('Failed to save Supabase config to localStorage:', e);
   }
   // Reset singleton client
   supabaseInstance = null;

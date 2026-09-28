@@ -34,20 +34,32 @@ export const DashboardPWAInstallCTA: React.FC<DashboardPWAInstallCTAProps> = ({
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   useEffect(() => {
-    const dismissed = localStorage.getItem('pwa_cta_dismissed');
-    if (dismissed === 'true') {
-      setIsDismissed(true);
+    try {
+      const dismissed = localStorage.getItem('pwa_cta_dismissed');
+      if (dismissed === 'true') {
+        setIsDismissed(true);
+      }
+    } catch (e) {
+      console.warn('localStorage is not available:', e);
     }
   }, []);
 
   const handleDismiss = () => {
     setIsDismissed(true);
-    localStorage.setItem('pwa_cta_dismissed', 'true');
+    try {
+      localStorage.setItem('pwa_cta_dismissed', 'true');
+    } catch (e) {
+      console.error('Failed to save to localStorage:', e);
+    }
   };
 
   const handleRestore = () => {
     setIsDismissed(false);
-    localStorage.removeItem('pwa_cta_dismissed');
+    try {
+      localStorage.removeItem('pwa_cta_dismissed');
+    } catch (e) {
+      console.error('Failed to remove from localStorage:', e);
+    }
   };
 
   const handlePrimaryInstallClick = async () => {
