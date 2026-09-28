@@ -287,6 +287,59 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
         rawValues: { 'Roll No': ref.rollNo, Certificate: ref.certType, Timestamp: rowDate },
       };
     });
+
+    // Sample unidentified Drive files to demonstrate string similarity matching in the Manual Review Queue
+    const sampleUnidentifiedSeedFiles: DriveCertificateFile[] = [
+      {
+        id: 'seed_unidentified_1',
+        name: 'Navya_Ramya_Sree_Workshop_Cert.pdf',
+        mimeType: 'application/pdf',
+        createdTime: new Date(nowMs - 2 * 86400000).toISOString(),
+        modifiedTime: new Date(nowMs - 2 * 86400000).toISOString(),
+        webViewLink: '#',
+      },
+      {
+        id: 'seed_unidentified_2',
+        name: 'Cert_25A31AO5EI_Merit_Award.pdf',
+        mimeType: 'application/pdf',
+        createdTime: new Date(nowMs - 3 * 86400000).toISOString(),
+        modifiedTime: new Date(nowMs - 3 * 86400000).toISOString(),
+        webViewLink: '#',
+      },
+      {
+        id: 'seed_unidentified_3',
+        name: 'AWS_Cloud_Certificate_Ref05DY.pdf',
+        mimeType: 'application/pdf',
+        createdTime: new Date(nowMs - 4 * 86400000).toISOString(),
+        modifiedTime: new Date(nowMs - 4 * 86400000).toISOString(),
+        webViewLink: '#',
+      },
+      {
+        id: 'seed_unidentified_4',
+        name: 'Thraitheshwari_Paper_Presentation.pdf',
+        mimeType: 'application/pdf',
+        createdTime: new Date(nowMs - 5 * 86400000).toISOString(),
+        modifiedTime: new Date(nowMs - 5 * 86400000).toISOString(),
+        webViewLink: '#',
+      },
+      {
+        id: 'seed_unidentified_5',
+        name: 'Babi_Webinar_Certificate_2026.pdf',
+        mimeType: 'application/pdf',
+        createdTime: new Date(nowMs - 6 * 86400000).toISOString(),
+        modifiedTime: new Date(nowMs - 6 * 86400000).toISOString(),
+        webViewLink: '#',
+      },
+      {
+        id: 'seed_unidentified_6',
+        name: 'Scan_2026_Unmarked_Document_08.pdf',
+        mimeType: 'application/pdf',
+        createdTime: new Date(nowMs - 7 * 86400000).toISOString(),
+        modifiedTime: new Date(nowMs - 7 * 86400000).toISOString(),
+        webViewLink: '#',
+      },
+    ];
+    driveFiles = [...driveFiles, ...sampleUnidentifiedSeedFiles];
   }
 
   // Collections for review

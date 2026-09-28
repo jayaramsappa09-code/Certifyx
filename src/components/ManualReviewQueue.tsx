@@ -21,10 +21,17 @@ import {
   Sparkles,
   Search,
   Upload,
+  Wand2,
+  CheckCheck,
+  Zap,
 } from 'lucide-react';
 import { DriveCertificateFile } from '../types';
 import { FIXED_CLASS_ROSTER } from '../data/classRoster';
 import { BulkMappingUploadModal } from './BulkMappingUploadModal';
+import {
+  scanUnidentifiedFilesForAutoMapping,
+  StudentSimilarityMatch,
+} from '../utils/fileSimilarityMatcher';
 import {
   saveManualFileOverride,
   saveDuplicateResolution,
@@ -145,6 +152,7 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
   >({});
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
+  const [autoMapFilter, setAutoMapFilter] = useState<'ALL' | 'MATCHABLE' | 'UNMATCHED'>('ALL');
 
   // Modal Preview state
   const [previewFile, setPreviewFile] = useState<DriveCertificateFile | null>(
@@ -155,6 +163,11 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
   const duplicateResolutions = getDuplicateResolutions();
   const rosterStudents = getDynamicRoster();
 
+  // Automatic string similarity analysis between unidentified files and class roster
+  const autoMapAnalysis = React.useMemo(() => {
+    return scanUnidentifiedFilesForAutoMapping(unidentifiedFiles, rosterStudents);
+  }, [unidentifiedFiles, rosterStudents]);
+
   const showToast = (msg: string) => {
     setSuccessToast(msg);
     setTimeout(() => setSuccessToast(null), 3500);
@@ -163,8 +176,14 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
   // Get active file list based on current sub-tab
   const currentFilesList = React.useMemo(() => {
     let list: DriveCertificateFile[] = [];
-    if (activeSubTab === 'unidentified') list = unidentifiedFiles;
-    else if (activeSubTab === 'outside') list = outsideClassFiles;
+    if (activeSubTab === 'unidentified') {
+      list = unidentifiedFiles;
+      if (autoMapFilter === 'MATCHABLE') {
+        list = list.filter((f) => autoMapAnalysis.results.get(f.id)?.bestMatch != null);
+      } else if (autoMapFilter === 'UNMATCHED') {
+        list = list.filter((f) => autoMapAnalysis.results.get(f.id)?.bestMatch == null);
+      }
+    } else if (activeSubTab === 'outside') list = outsideClassFiles;
     else if (activeSubTab === 'ambiguous') list = ambiguousCertFiles;
     else if (activeSubTab === 'duplicates') list = duplicateFiles;
 
@@ -184,7 +203,77 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
     ambiguousCertFiles,
     duplicateFiles,
     searchTerm,
+    autoMapFilter,
+    autoMapAnalysis,
   ]);
+
+  // Batch auto-map high-confidence files (>= 75% similarity)
+  const handleAutoMapAllHighConfidence = () => {
+    const targets = autoMapAnalysis.highConfidenceMatches;
+    if (targets.length === 0) {
+      showToast('No high-confidence matches found to auto-map.');
+      return;
+    }
+
+    let mappedCount = 0;
+    targets.forEach(({ file, bestMatch }) => {
+      if (!bestMatch) return;
+      saveManualFileOverride({
+        fileId: file.id,
+        assignedRollNo: bestMatch.student.rollNo,
+        assignedCertType: selectedTypeForFile[file.id] || file.detectedCertType,
+        resolvedAt: new Date().toISOString(),
+      });
+      mappedCount++;
+    });
+
+    addAuditLog(
+      'Batch auto-mapping via string similarity',
+      userEmail,
+      `Auto-mapped ${mappedCount} unidentified files to roster students based on filename similarity`,
+      'REVIEW'
+    );
+
+    showToast(`✨ Successfully auto-mapped ${mappedCount} files based on filename string similarity! Run Sync to update roster.`);
+    onRefreshAfterResolution();
+  };
+
+  // Pre-populate student dropdowns with top matching suggestions for review
+  const handlePrePopulateAllSuggestions = () => {
+    const updates: Record<string, string> = {};
+    let populatedCount = 0;
+
+    unidentifiedFiles.forEach((file) => {
+      const match = autoMapAnalysis.results.get(file.id)?.bestMatch;
+      if (match) {
+        updates[file.id] = match.student.rollNo;
+        populatedCount++;
+      }
+    });
+
+    setSelectedStudentForFile((prev) => ({ ...prev, ...updates }));
+    showToast(`Pre-populated ${populatedCount} suggested students into dropdowns. Review and click Assign.`);
+  };
+
+  // Single suggestion 1-click apply
+  const handleApplySingleSuggestion = (file: DriveCertificateFile, match: StudentSimilarityMatch) => {
+    saveManualFileOverride({
+      fileId: file.id,
+      assignedRollNo: match.student.rollNo,
+      assignedCertType: selectedTypeForFile[file.id] || file.detectedCertType,
+      resolvedAt: new Date().toISOString(),
+    });
+
+    addAuditLog(
+      'Auto-mapped via string similarity',
+      userEmail,
+      `Auto-mapped "${file.name}" to ${match.student.rollNo} (${match.student.name}) [${match.matchReason}, ${match.confidence}% confidence]`,
+      'REVIEW'
+    );
+
+    showToast(`✨ Mapped "${file.name}" to ${match.student.rollNo} (${match.student.name}). Run Sync to apply.`);
+    onRefreshAfterResolution();
+  };
 
   // Handle open preview modal
   const handleOpenPreview = (file: DriveCertificateFile, idx?: number) => {
@@ -476,6 +565,115 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
         </div>
       </div>
 
+      {/* Automatic String Similarity Matching Engine Banner for Unidentified Files */}
+      {activeSubTab === 'unidentified' && unidentifiedFiles.length > 0 && (
+        <div className="bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-800/60 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3.5 animate-in fade-in duration-200">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 shrink-0">
+                <Sparkles className="w-5 h-5 text-purple-400 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-1.5">
+                    <span>String Similarity Auto-Mapping Engine</span>
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-950 text-emerald-300 border border-emerald-700">
+                    Fuzzy Matcher Active
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Automatically analyzes filename tokens, roll numbers, serials, and student names to pair unidentified files with class roster students.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              {autoMapAnalysis.highConfidenceMatches.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleAutoMapAllHighConfidence}
+                  className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-900/30 cursor-pointer"
+                  title="Automatically map all high-confidence (≥75% similarity) files to roster students in 1 click"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  <span>Auto-Map All High-Confidence ({autoMapAnalysis.highConfidenceMatches.length})</span>
+                </button>
+              )}
+
+              {(autoMapAnalysis.highConfidenceMatches.length > 0 || autoMapAnalysis.mediumConfidenceMatches.length > 0) && (
+                <button
+                  type="button"
+                  onClick={handlePrePopulateAllSuggestions}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                  title="Pre-populate student dropdowns with top matching suggestions for manual inspection"
+                >
+                  <Wand2 className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Review Suggestions</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Metric Chips & Quick Filter */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-slate-400 text-[11px] font-semibold">Match Results:</span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                {autoMapAnalysis.highConfidenceMatches.length} High Confidence (≥75%)
+              </span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-950/80 text-indigo-300 border border-indigo-800">
+                <Zap className="w-3 h-3 text-indigo-400" />
+                {autoMapAnalysis.mediumConfidenceMatches.length} Suggestions (60–74%)
+              </span>
+              {autoMapAnalysis.unmatchedCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800">
+                  {autoMapAnalysis.unmatchedCount} Require Manual Search
+                </span>
+              )}
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setAutoMapFilter('ALL')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
+                  autoMapFilter === 'ALL'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                All ({unidentifiedFiles.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAutoMapFilter('MATCHABLE')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
+                  autoMapFilter === 'MATCHABLE'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Matchable ({autoMapAnalysis.highConfidenceMatches.length + autoMapAnalysis.mediumConfidenceMatches.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAutoMapFilter('UNMATCHED')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
+                  autoMapFilter === 'UNMATCHED'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                No Match ({autoMapAnalysis.unmatchedCount})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content: Files List / Grid View */}
       {currentFilesList.length === 0 ? (
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center text-slate-400 space-y-2">
@@ -494,6 +692,9 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {currentFilesList.map((file, idx) => {
             const dupRes = duplicateResolutions[file.id] || 'REVIEW';
+            const autoMatch = activeSubTab === 'unidentified' ? autoMapAnalysis.results.get(file.id) : null;
+            const bestMatch = autoMatch?.bestMatch;
+
             return (
               <div
                 key={file.id ? `${file.id}_${idx}` : `grid_${idx}`}
@@ -537,12 +738,51 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                   </h4>
                 </div>
 
+                {/* String Similarity Suggested Match for Unidentified Files */}
+                {activeSubTab === 'unidentified' && bestMatch && (
+                  <div className="p-2.5 rounded-xl bg-purple-950/40 border border-purple-800/60 space-y-1 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-purple-300 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-purple-400" />
+                        Suggested Student
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded font-mono font-bold text-[10px] ${
+                          bestMatch.confidence >= 75
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                            : 'bg-amber-950 text-amber-300 border border-amber-800'
+                        }`}
+                      >
+                        {bestMatch.confidence}% Match
+                      </span>
+                    </div>
+                    <div className="font-mono text-white font-bold truncate">
+                      {bestMatch.student.rollNo}
+                    </div>
+                    <div className="text-slate-300 text-[11px] truncate font-medium">
+                      {bestMatch.student.name}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate" title={bestMatch.matchReason}>
+                      {bestMatch.matchReason}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleApplySingleSuggestion(file, bestMatch)}
+                      className="w-full mt-1 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-[11px] font-bold rounded-lg transition flex items-center justify-center gap-1 shadow-sm cursor-pointer"
+                      title={`Accept suggested match to ${bestMatch.student.rollNo}`}
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Accept &amp; Map</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Inline Action Controls */}
                 <div className="pt-2 border-t border-slate-800/80">
                   {activeSubTab === 'unidentified' && (
                     <div className="space-y-2">
                       <select
-                        value={selectedStudentForFile[file.id] || ''}
+                        value={selectedStudentForFile[file.id] || (bestMatch ? bestMatch.student.rollNo : '')}
                         onChange={(e) =>
                           setSelectedStudentForFile((prev) => ({
                             ...prev,
@@ -552,6 +792,11 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                         className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                       >
                         <option value="">Assign to Student...</option>
+                        {bestMatch && (
+                          <option value={bestMatch.student.rollNo} className="text-emerald-400 font-bold bg-slate-900">
+                            ★ [Suggested {bestMatch.confidence}%] {bestMatch.student.rollNo} - {bestMatch.student.name}
+                          </option>
+                        )}
                         {rosterStudents.map((s) => (
                           <option key={s.rollNo} value={s.rollNo}>
                             {s.rollNo} - {s.name}
@@ -559,8 +804,17 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                         ))}
                       </select>
                       <button
-                        onClick={() => handleAssignRollNo(file)}
-                        disabled={!selectedStudentForFile[file.id]}
+                        onClick={() => {
+                          const assignedRoll = selectedStudentForFile[file.id] || bestMatch?.student.rollNo;
+                          if (assignedRoll) {
+                            if (!selectedStudentForFile[file.id] && bestMatch) {
+                              handleApplySingleSuggestion(file, bestMatch);
+                            } else {
+                              handleAssignRollNo(file);
+                            }
+                          }
+                        }}
+                        disabled={!selectedStudentForFile[file.id] && !bestMatch}
                         className="w-full py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center justify-center gap-1"
                       >
                         <Check className="w-3.5 h-3.5" />
@@ -656,13 +910,15 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
         <div className="space-y-3">
           {currentFilesList.map((file, idx) => {
             const dupRes = duplicateResolutions[file.id] || 'REVIEW';
+            const autoMatch = activeSubTab === 'unidentified' ? autoMapAnalysis.results.get(file.id) : null;
+            const bestMatch = autoMatch?.bestMatch;
             return (
               <div
                 key={file.id ? `${file.id}_${idx}` : `list_${idx}`}
                 className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition group shadow-md"
               >
                 {/* Left: Thumbnail & Details */}
-                <div className="flex items-center gap-3.5 min-w-0">
+                <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
                   <CertificateThumbnail
                     file={file}
                     size="md"
@@ -703,6 +959,35 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                       {file.name}
                     </div>
 
+                    {/* String Similarity Suggestion in List View */}
+                    {activeSubTab === 'unidentified' && bestMatch && (
+                      <div className="flex flex-wrap items-center gap-2 py-1 px-2.5 rounded-xl bg-purple-950/40 border border-purple-800/50 text-xs">
+                        <span className="inline-flex items-center gap-1 font-bold text-purple-300 text-[11px]">
+                          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                          Suggested:
+                        </span>
+                        <span className="font-mono font-bold text-white text-xs">
+                          {bestMatch.student.rollNo}
+                        </span>
+                        <span className="text-slate-300 text-xs font-medium">
+                          ({bestMatch.student.name})
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.2 rounded font-mono font-bold text-[10px] ${
+                            bestMatch.confidence >= 75
+                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                              : 'bg-amber-950 text-amber-300 border border-amber-800'
+                          }`}
+                          title={bestMatch.matchReason}
+                        >
+                          {bestMatch.confidence}% Match
+                        </span>
+                        <span className="text-[10px] text-slate-400 hidden lg:inline max-w-xs truncate" title={bestMatch.matchReason}>
+                          • {bestMatch.matchReason}
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-3 text-[11px] text-slate-400">
                       <button
                         onClick={() => handleOpenPreview(file, idx)}
@@ -727,11 +1012,23 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                 </div>
 
                 {/* Right: Actions */}
-                <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                <div className="flex flex-wrap md:flex-nowrap items-center gap-2 shrink-0 self-end md:self-center">
                   {activeSubTab === 'unidentified' && (
                     <>
+                      {bestMatch && (
+                        <button
+                          type="button"
+                          onClick={() => handleApplySingleSuggestion(file, bestMatch)}
+                          className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0"
+                          title={`Accept suggestion to map to ${bestMatch.student.rollNo} (${bestMatch.student.name})`}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Accept &amp; Map</span>
+                        </button>
+                      )}
+
                       <select
-                        value={selectedStudentForFile[file.id] || ''}
+                        value={selectedStudentForFile[file.id] || (bestMatch ? bestMatch.student.rollNo : '')}
                         onChange={(e) =>
                           setSelectedStudentForFile((prev) => ({
                             ...prev,
@@ -741,6 +1038,11 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                         className="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500 max-w-xs"
                       >
                         <option value="">Select Student from 67 Roster...</option>
+                        {bestMatch && (
+                          <option value={bestMatch.student.rollNo} className="text-emerald-400 font-bold bg-slate-900">
+                            ★ [Suggested {bestMatch.confidence}%] {bestMatch.student.rollNo} - {bestMatch.student.name}
+                          </option>
+                        )}
                         {rosterStudents.map((s) => (
                           <option key={s.rollNo} value={s.rollNo}>
                             {s.rollNo} - {s.name}
@@ -749,11 +1051,20 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                       </select>
 
                       <button
-                        onClick={() => handleAssignRollNo(file)}
-                        disabled={!selectedStudentForFile[file.id]}
-                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+                        onClick={() => {
+                          const assignedRoll = selectedStudentForFile[file.id] || bestMatch?.student.rollNo;
+                          if (assignedRoll) {
+                            if (!selectedStudentForFile[file.id] && bestMatch) {
+                              handleApplySingleSuggestion(file, bestMatch);
+                            } else {
+                              handleAssignRollNo(file);
+                            }
+                          }
+                        }}
+                        disabled={!selectedStudentForFile[file.id] && !bestMatch}
+                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0"
                       >
-                        Assign
+                        <span>Assign</span>
                       </button>
                     </>
                   )}
@@ -927,101 +1238,168 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
             </div>
 
             {/* Modal Footer: Quick Assignment / Resolution Toolbar */}
-            <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <span className="text-xs text-slate-400 font-semibold">Quick Action:</span>
-                {activeSubTab === 'unidentified' && (
-                  <select
-                    value={selectedStudentForFile[previewFile.id] || ''}
-                    onChange={(e) =>
-                      setSelectedStudentForFile((prev) => ({
-                        ...prev,
-                        [previewFile.id]: e.target.value,
-                      }))
-                    }
-                    className="flex-1 sm:flex-none px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200"
-                  >
-                    <option value="">Select Student from 67 Roster...</option>
-                    {rosterStudents.map((s) => (
-                      <option key={s.rollNo} value={s.rollNo}>
-                        {s.rollNo} - {s.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
+            <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-900/90 flex flex-col gap-3">
+              {/* If unidentified, show matched recommendation banner inside modal if available */}
+              {activeSubTab === 'unidentified' && (() => {
+                const previewBestMatch = autoMapAnalysis.results.get(previewFile.id)?.bestMatch;
+                if (!previewBestMatch) return null;
+                return (
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-purple-950/40 border border-purple-800/60 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 font-bold text-purple-300">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                        Suggested Match:
+                      </span>
+                      <span className="font-mono font-bold text-white">
+                        {previewBestMatch.student.rollNo}
+                      </span>
+                      <span className="text-slate-300 font-medium">
+                        ({previewBestMatch.student.name})
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded font-mono font-bold text-[10px] ${
+                          previewBestMatch.confidence >= 75
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                            : 'bg-amber-950 text-amber-300 border border-amber-800'
+                        }`}
+                      >
+                        {previewBestMatch.confidence}% Match
+                      </span>
+                    </div>
 
-                {activeSubTab === 'ambiguous' && (
-                  <select
-                    value={selectedTypeForFile[previewFile.id] || ''}
-                    onChange={(e) =>
-                      setSelectedTypeForFile((prev) => ({
-                        ...prev,
-                        [previewFile.id]: e.target.value,
-                      }))
-                    }
-                    className="flex-1 sm:flex-none px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200"
-                  >
-                    <option value="">Select Category...</option>
-                    {certTypeOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                {activeSubTab === 'unidentified' && (
-                  <button
-                    onClick={() => {
-                      handleAssignRollNo(previewFile);
-                      if (previewIndex < currentFilesList.length - 1) {
-                        handleNextPreview();
-                      } else {
-                        setPreviewFile(null);
-                      }
-                    }}
-                    disabled={!selectedStudentForFile[previewFile.id]}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
-                  >
-                    Assign &amp; Next
-                  </button>
-                )}
-
-                {activeSubTab === 'ambiguous' && (
-                  <button
-                    onClick={() => {
-                      handleAssignCertType(previewFile);
-                      if (previewIndex < currentFilesList.length - 1) {
-                        handleNextPreview();
-                      } else {
-                        setPreviewFile(null);
-                      }
-                    }}
-                    disabled={!selectedTypeForFile[previewFile.id]}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
-                  >
-                    Save &amp; Next
-                  </button>
-                )}
-
-                {activeSubTab === 'duplicates' && (
-                  <>
                     <button
-                      onClick={() => handleResolveDuplicate(previewFile, 'KEEP')}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+                      type="button"
+                      onClick={() => {
+                        handleApplySingleSuggestion(previewFile, previewBestMatch);
+                        if (previewIndex < currentFilesList.length - 1) {
+                          handleNextPreview();
+                        } else {
+                          setPreviewFile(null);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1 shadow-sm cursor-pointer"
                     >
-                      Keep
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Accept Match &amp; Next</span>
                     </button>
+                  </div>
+                );
+              })()}
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <span className="text-xs text-slate-400 font-semibold">Quick Action:</span>
+                  {activeSubTab === 'unidentified' && (() => {
+                    const previewBestMatch = autoMapAnalysis.results.get(previewFile.id)?.bestMatch;
+                    return (
+                      <select
+                        value={selectedStudentForFile[previewFile.id] || (previewBestMatch ? previewBestMatch.student.rollNo : '')}
+                        onChange={(e) =>
+                          setSelectedStudentForFile((prev) => ({
+                            ...prev,
+                            [previewFile.id]: e.target.value,
+                          }))
+                        }
+                        className="flex-1 sm:flex-none px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200"
+                      >
+                        <option value="">Select Student from 67 Roster...</option>
+                        {previewBestMatch && (
+                          <option value={previewBestMatch.student.rollNo} className="text-emerald-400 font-bold bg-slate-900">
+                            ★ [Suggested {previewBestMatch.confidence}%] {previewBestMatch.student.rollNo} - {previewBestMatch.student.name}
+                          </option>
+                        )}
+                        {rosterStudents.map((s) => (
+                          <option key={s.rollNo} value={s.rollNo}>
+                            {s.rollNo} - {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
+
+                  {activeSubTab === 'ambiguous' && (
+                    <select
+                      value={selectedTypeForFile[previewFile.id] || ''}
+                      onChange={(e) =>
+                        setSelectedTypeForFile((prev) => ({
+                          ...prev,
+                          [previewFile.id]: e.target.value,
+                        }))
+                      }
+                      className="flex-1 sm:flex-none px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200"
+                    >
+                      <option value="">Select Category...</option>
+                      {certTypeOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  {activeSubTab === 'unidentified' && (() => {
+                    const previewBestMatch = autoMapAnalysis.results.get(previewFile.id)?.bestMatch;
+                    const assignedRoll = selectedStudentForFile[previewFile.id] || previewBestMatch?.student.rollNo;
+                    return (
+                      <button
+                        onClick={() => {
+                          if (assignedRoll) {
+                            if (!selectedStudentForFile[previewFile.id] && previewBestMatch) {
+                              handleApplySingleSuggestion(previewFile, previewBestMatch);
+                            } else {
+                              handleAssignRollNo(previewFile);
+                            }
+                            if (previewIndex < currentFilesList.length - 1) {
+                              handleNextPreview();
+                            } else {
+                              setPreviewFile(null);
+                            }
+                          }
+                        }}
+                        disabled={!assignedRoll}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+                      >
+                        Assign &amp; Next
+                      </button>
+                    );
+                  })()}
+
+                  {activeSubTab === 'ambiguous' && (
                     <button
-                      onClick={() => handleResolveDuplicate(previewFile, 'IGNORE')}
-                      className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+                      onClick={() => {
+                        handleAssignCertType(previewFile);
+                        if (previewIndex < currentFilesList.length - 1) {
+                          handleNextPreview();
+                        } else {
+                          setPreviewFile(null);
+                        }
+                      }}
+                      disabled={!selectedTypeForFile[previewFile.id]}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
                     >
-                      Ignore
+                      Save &amp; Next
                     </button>
-                  </>
-                )}
+                  )}
+
+                  {activeSubTab === 'duplicates' && (
+                    <>
+                      <button
+                        onClick={() => handleResolveDuplicate(previewFile, 'KEEP')}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+                      >
+                        Keep
+                      </button>
+                      <button
+                        onClick={() => handleResolveDuplicate(previewFile, 'IGNORE')}
+                        className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+                      >
+                        Ignore
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>

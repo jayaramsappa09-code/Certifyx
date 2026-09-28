@@ -16,6 +16,7 @@ import {
   Moon,
   Activity,
   Download,
+  Smartphone,
 } from 'lucide-react';
 import { AuthUser } from '../types';
 import { ConnectivityStatusIndicator } from './ConnectivityStatusIndicator';
@@ -44,6 +45,7 @@ interface HeaderProps {
   onToggleTheme?: () => void;
   onOpenDataHealthReport?: () => void;
   onOpenExportCenter?: () => void;
+  onOpenAndroidDownloadModal?: () => void;
   rosterCount?: number;
   driveFolderId?: string | null;
 }
@@ -70,6 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   onOpenDataHealthReport,
   onOpenExportCenter,
+  onOpenAndroidDownloadModal,
   rosterCount,
   driveFolderId,
 }) => {
@@ -199,6 +202,20 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* In-App PWA Install Trigger */}
           <PWAInstallButton />
+
+          {/* Android App Download Modal Trigger */}
+          {onOpenAndroidDownloadModal && (
+            <button
+              type="button"
+              onClick={onOpenAndroidDownloadModal}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600/20 to-teal-600/20 hover:from-emerald-600/30 hover:to-teal-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold rounded-xl transition cursor-pointer shadow-md shadow-emerald-950/20"
+              title="Download Android Application Package (.apk) &amp; WebAPK App Link"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Android App</span>
+              <span className="sm:hidden">App</span>
+            </button>
+          )}
 
           {/* Google Auth Status / Profile */}
           {user ? (

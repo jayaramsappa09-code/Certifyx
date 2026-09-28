@@ -58,6 +58,8 @@ export interface SheetRowRecord {
   certificateType?: string;
   year?: string;
   section?: string;
+  department?: string;
+  branch?: string;
   certificateUrl?: string;
   submissionTimestamp?: string;
   matchedRollNo?: string;
@@ -298,4 +300,53 @@ export interface PendingUpdateRecord {
   error?: string;
   retryCount?: number;
 }
+
+// Campus Role-Based Access Control (RBAC) Types
+export type CampusRole = 'STUDENT' | 'FACULTY_PROCTOR' | 'DEPARTMENT_HOD' | 'DEAN_PRINCIPAL';
+
+export interface CampusRoleConfig {
+  id: CampusRole;
+  title: string;
+  badge: string;
+  scopeDescription: string;
+  maxAccessibleRecords: number;
+  assignedDepartment?: string;
+  assignedBatchRange?: { fromRoll: string; toRoll: string };
+  permissions: {
+    canExportAuditLogs: boolean;
+    canExportAllDrive: boolean;
+    canMutateRoster: boolean;
+    canViewAllBranches: boolean;
+    canBulkVerify: boolean;
+    canManageDriveQuota: boolean;
+  };
+}
+
+// Client-Side Google Drive API Quota Management Types
+export interface QuotaQueueTask {
+  id: string;
+  type: 'METADATA_FETCH' | 'FILE_COPY' | 'FOLDER_CREATE' | 'PERMISSION_GRANT' | 'WEBHOOK_SYNC';
+  targetRollNo?: string;
+  fileName?: string;
+  priority: 'HIGH' | 'NORMAL' | 'LOW';
+  createdAt: number;
+  status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'RETRYING';
+  retryCount: number;
+  latencyMs?: number;
+}
+
+export interface QuotaHealthSnapshot {
+  requestsPerSecond: number;
+  maxSafeLimitPerSec: number;
+  tokenBucketBalance: number;
+  tokenBucketCapacity: number;
+  queuedTasksCount: number;
+  processedTasksCount: number;
+  throttledRequestsCount: number;
+  http429Errors: number;
+  activeWorkers: number;
+  estimatedTimeToDrainSec: number;
+  isBurstSimulating: boolean;
+}
+
 

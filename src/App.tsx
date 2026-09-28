@@ -113,6 +113,8 @@ import {
 import { ExportCenterModal } from './components/ExportCenterModal';
 import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
+import { AndroidAppDownloadModal } from './components/AndroidAppDownloadModal';
+import { DashboardPWAInstallCTA } from './components/DashboardPWAInstallCTA';
 import { EmailReminderModal } from './components/EmailReminderModal';
 import { DataHealthView } from './components/DataHealthView';
 import { DashboardDriveOrganizerHub } from './components/DashboardDriveOrganizerHub';
@@ -268,6 +270,7 @@ export default function App() {
   const [showSyncReportModal, setShowSyncReportModal] = useState(false);
   const [showAdvancedExportModal, setShowAdvancedExportModal] = useState(false);
   const [showExportCenterModal, setShowExportCenterModal] = useState(false);
+  const [showAndroidDownloadModal, setShowAndroidDownloadModal] = useState(false);
   const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
   const [showEmailReminderModal, setShowEmailReminderModal] = useState(false);
   const [showEmailAutomationModal, setShowEmailAutomationModal] = useState(false);
@@ -2063,6 +2066,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         onOpenSheetProof={() => setShowSheetProofModal(true)}
         onOpenDataHealthReport={() => setShowDataHealthReportModal(true)}
         onOpenExportCenter={() => setShowExportCenterModal(true)}
+        onOpenAndroidDownloadModal={() => setShowAndroidDownloadModal(true)}
         isSyncing={isSyncing}
         lastSynced={lastSyncReport?.timestamp || null}
         reviewCount={totalReviewItems}
@@ -2141,6 +2145,11 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         {/* Tab 1: Dashboard & Class Roster */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-fade-in">
+            {/* Native Application Installation Call-to-Action Banner */}
+            <DashboardPWAInstallCTA
+              onOpenAndroidDownloadModal={() => setShowAndroidDownloadModal(true)}
+            />
+
             {/* Top Metric Cards - High Priority */}
             <DashboardStats
               totalStudents={studentStatuses.length || 67}
@@ -2535,6 +2544,12 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
           </div>
         </div>
       )}
+
+      {/* Android Application Download Center Modal */}
+      <AndroidAppDownloadModal
+        isOpen={showAndroidDownloadModal}
+        onClose={() => setShowAndroidDownloadModal(false)}
+      />
 
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-600">
