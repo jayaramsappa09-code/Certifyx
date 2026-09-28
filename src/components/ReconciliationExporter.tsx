@@ -20,7 +20,9 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
   const [exportedFolderUrl, setExportedFolderUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const matchedStudents = students.filter(s => s.driveUploaded && s.sheetUpdated);
+  // Export students who have at least one file, regardless of sheet status
+  const studentsWithFiles = students.filter(s => s.driveFiles && s.driveFiles.length > 0);
+  const matchedStudents = studentsWithFiles; // Using all students with files
 
   const handleStartExport = async () => {
     setError(null);
@@ -30,7 +32,7 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
     }
 
     if (matchedStudents.length === 0) {
-      setError('No matched students found to export.');
+      setError('No students with uploaded files found to export.');
       return;
     }
 
@@ -46,13 +48,13 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
 
     try {
       // 1. Create target folder
-      const folder = await createDriveFolder(newFolderName, accessToken);
-      if (!folder || !folder.id) {
+      const rootFolder = await createDriveFolder(newFolderName, accessToken);
+      if (!rootFolder || !rootFolder.id) {
         throw new Error('Failed to create folder: No ID returned from Google Drive.');
       }
       
-      const targetFolderId = folder.id;
-      const url = `https://drive.google.com/drive/folders/${targetFolderId}`;
+      const rootFolderId = rootFolder.id;
+      const url = `https://drive.google.com/drive/folders/${rootFolderId}`;
       setExportedFolderUrl(url);
 
       // 2. Iterate and copy files
@@ -61,14 +63,20 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
       for (const student of matchedStudents) {
         if (!student.driveFiles || student.driveFiles.length === 0) continue;
 
+        // Create student-specific subfolder
+        const studentFolderName = `${student.rollNo}_${student.name || 'Unknown'}`;
+        const studentFolder = await createDriveFolder(studentFolderName, accessToken, rootFolderId);
+        const studentFolderId = studentFolder.id;
+
         for (const file of student.driveFiles) {
           setProgress(prev => ({
             ...prev,
-            status: `Copying: ${file.name} (${student.rollNo})`
+            status: `Copying: ${file.name} to ${studentFolderName}`
           }));
 
           try {
-            await copyDriveFile(file.id, accessToken, targetFolderId, `${student.rollNo}_${file.name}`);
+            // Copy file to student subfolder
+            await copyDriveFile(file.id, accessToken, studentFolderId, file.name);
             copiedCount++;
             setProgress(prev => ({ ...prev, current: copiedCount }));
           } catch (err) {
@@ -208,7 +216,7 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
 
       <div className="flex items-center gap-2 text-[10px] text-slate-500 bg-slate-950/20 p-2 rounded-lg border border-slate-800/40">
         <span className="font-bold text-slate-400">Target Group:</span>
-        <span>Students with BOTH Drive file verified AND Sheet response recorded ({matchedStudents.length} candidates)</span>
+        <span>Students with uploaded Drive files ({matchedStudents.length} candidates)</span>
       </div>
     </div>
   );
