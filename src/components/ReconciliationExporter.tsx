@@ -44,28 +44,44 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
 
       // 2. Iterate and copy files
       let copiedCount = 0;
-      for (const student of matchedStudents) {
-        if (!student.driveFiles || student.driveFiles.length === 0) continue;
+      let totalToCopy = 0;
+      
+      // Pre-calculate total files for accurate progress
+      matchedStudents.forEach(s => {
+        totalToCopy += s.driveFiles?.length || 0;
+      });
 
-        setProgress(prev => ({
-          ...prev,
-          current: copiedCount,
-          status: `Copying files for ${student.rollNo}...`
-        }));
+      setProgress({ current: 0, total: totalToCopy, status: 'Starting copies...' });
+
+      for (const student of matchedStudents) {
+        if (!student.driveFiles || student.driveFiles.length === 0) {
+          console.warn(`Student ${student.rollNo} is matched but has no drive files in state.`);
+          continue;
+        }
 
         // Copy each file associated with this student
         for (const file of student.driveFiles) {
+          setProgress(prev => ({
+            ...prev,
+            status: `Copying: ${file.name} (${student.rollNo})`
+          }));
+
           try {
             await copyDriveFile(file.id, accessToken, targetFolderId, `${student.rollNo}_${file.name}`);
+            copiedCount++;
+            setProgress(prev => ({ ...prev, current: copiedCount }));
           } catch (err) {
             console.error(`Failed to copy file ${file.name} for student ${student.rollNo}:`, err);
+            // We continue the loop even if one file fails
           }
         }
-        copiedCount++;
       }
 
-      setProgress({ current: matchedStudents.length, total: matchedStudents.length, status: 'Export complete!' });
-      onToast?.(`Successfully exported ${copiedCount} student files to Drive folder: ${newFolderName}`, 'success');
+      setProgress({ current: totalToCopy, total: totalToCopy, status: 'Export complete!' });
+      if (copiedCount === 0 && totalToCopy > 0) {
+        throw new Error('All file copy operations failed. Please check your Drive permissions.');
+      }
+      onToast?.(`Successfully exported ${copiedCount} files to Drive folder: ${newFolderName}`, 'success');
     } catch (err: any) {
       console.error('Export failed:', err);
       onToast?.(err.message || 'Failed to export matched data.', 'error');
@@ -117,34 +133,59 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
       {isExporting && (
         <div className="space-y-2 pt-2 border-t border-slate-800/50">
           <div className="flex items-center justify-between text-[10px]">
-            <span className="text-slate-400 italic">{progress.status}</span>
-            <span className="text-blue-400 font-bold">{progress.current} / {progress.total}</span>
+            <span className="text-blue-400 animate-pulse font-bold uppercase tracking-widest">
+              {progress.status}
+            </span>
+            <span className="text-blue-400 font-mono font-bold">{progress.current} / {progress.total}</span>
           </div>
-          <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+          <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800 p-0.5">
             <div
-              className="bg-blue-500 h-full transition-all duration-300"
+              className="bg-gradient-to-r from-blue-600 to-indigo-500 h-full rounded-full transition-all duration-300 shadow-sm shadow-blue-500/50"
               style={{ width: `${(progress.current / progress.total) * 100}%` }}
             />
           </div>
         </div>
       )}
 
-      {exportedFolderUrl && !isExporting && (
-        <div className="mt-2 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-3">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-            <span className="text-sm text-emerald-300 font-bold">Export completed successfully!</span>
+      {exportedFolderUrl && (
+        <div className={`mt-2 p-4 border rounded-xl space-y-3 transition-all ${
+          isExporting 
+            ? 'bg-blue-500/5 border-blue-500/20' 
+            : 'bg-emerald-500/10 border-emerald-500/20'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {isExporting ? (
+                <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              )}
+              <span className={`text-sm font-bold ${isExporting ? 'text-blue-300' : 'text-emerald-300'}`}>
+                {isExporting ? 'Exporting Files to Drive...' : 'Export completed successfully!'}
+              </span>
+            </div>
+            {!isExporting && (
+               <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold">READY</span>
+            )}
           </div>
-          <p className="text-xs text-emerald-400/80">
-            A new folder has been created with all matched certificates renamed for organization.
+          
+          <p className="text-xs text-slate-400 leading-relaxed">
+            {isExporting 
+              ? `The target folder has been created. Files are being renamed and copied one by one. You can open the folder now to watch the files arrive.`
+              : `All matching certificate files have been successfully renamed (RollNo_FileName) and copied to your new folder for distribution.`}
           </p>
+
           <a
             href={exportedFolderUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-emerald-600/30 transition w-full justify-center"
+            className={`inline-flex items-center gap-2 px-4 py-2.5 text-white text-sm font-bold rounded-xl shadow-lg transition w-full justify-center ${
+              isExporting
+                ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
+                : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+            }`}
           >
-            <span>OPEN EXPORTED DRIVE FOLDER</span>
+            <span>{isExporting ? 'VIEW FOLDER IN PROGRESS' : 'OPEN EXPORTED DRIVE FOLDER'}</span>
             <ExternalLink className="w-4 h-4" />
           </a>
         </div>

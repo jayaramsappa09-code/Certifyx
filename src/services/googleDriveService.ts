@@ -63,9 +63,22 @@ async function fetchDriveWithRetry(
   maxRetries = 3
 ): Promise<Response> {
   let delay = 1000;
+  
+  // Timeout guardian helper
+  const withTimeout = (promise: Promise<Response>, timeoutMs: number) => {
+    return Promise.race([
+      promise,
+      new Promise<Response>((_, reject) => 
+        setTimeout(() => reject(new Error('Google Drive request timed out. Please check your internet connection.')), timeoutMs)
+      )
+    ]);
+  };
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const res = await fetch(url, options);
+      // 15s timeout per attempt is reasonable for metadata/create/copy operations
+      const res = await withTimeout(fetch(url, options), 15000);
+      
       if (res.status === 429 || res.status >= 500) {
         if (attempt < maxRetries - 1) {
           await new Promise((r) => setTimeout(r, delay));
