@@ -15,6 +15,7 @@ import {
   Sun,
   Moon,
   Activity,
+  Download,
 } from 'lucide-react';
 import { AuthUser } from '../types';
 import { ConnectivityStatusIndicator } from './ConnectivityStatusIndicator';
@@ -42,6 +43,7 @@ interface HeaderProps {
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
   onOpenDataHealthReport?: () => void;
+  onOpenExportCenter?: () => void;
   rosterCount?: number;
   driveFolderId?: string | null;
 }
@@ -67,6 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
   theme = 'dark',
   onToggleTheme,
   onOpenDataHealthReport,
+  onOpenExportCenter,
   rosterCount,
   driveFolderId,
 }) => {
@@ -169,6 +172,19 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Activity className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Data Health</span>
+            </button>
+          )}
+
+          {/* Export Center Button */}
+          {isOnline && onOpenExportCenter && (
+            <button
+              type="button"
+              onClick={onOpenExportCenter}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer"
+              title="Open Export Center to download categorized student data"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Export Center</span>
             </button>
           )}
 

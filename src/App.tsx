@@ -110,6 +110,7 @@ import {
   SyncStepInfo,
   DetailedSyncProgress,
 } from './components/GlobalSyncProgressBar';
+import { ExportCenterModal } from './components/ExportCenterModal';
 import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
 import { EmailReminderModal } from './components/EmailReminderModal';
@@ -265,6 +266,7 @@ export default function App() {
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<StudentStatusRecord | null>(null);
   const [showSyncReportModal, setShowSyncReportModal] = useState(false);
   const [showAdvancedExportModal, setShowAdvancedExportModal] = useState(false);
+  const [showExportCenterModal, setShowExportCenterModal] = useState(false);
   const [showBulkMappingModal, setShowBulkMappingModal] = useState(false);
   const [showEmailReminderModal, setShowEmailReminderModal] = useState(false);
   const [showEmailAutomationModal, setShowEmailAutomationModal] = useState(false);
@@ -2033,6 +2035,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         onSyncNow={handleSyncNow}
         onOpenSheetProof={() => setShowSheetProofModal(true)}
         onOpenDataHealthReport={() => setShowDataHealthReportModal(true)}
+        onOpenExportCenter={() => setShowExportCenterModal(true)}
         isSyncing={isSyncing}
         lastSynced={lastSyncReport?.timestamp || null}
         reviewCount={totalReviewItems}
@@ -2329,6 +2332,13 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         {activeTab === 'docs' && <DocumentationTab />}
       </main>
 
+      {showExportCenterModal && (
+        <ExportCenterModal
+          students={studentStatuses}
+          onClose={() => setShowExportCenterModal(false)}
+        />
+      )}
+      
       {/* Student Detail Modal */}
       {selectedStudentForDetail && (
         <StudentDetailModal

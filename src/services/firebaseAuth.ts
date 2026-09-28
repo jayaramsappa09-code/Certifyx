@@ -55,6 +55,7 @@ export const GOOGLE_CLIENT_ID = 'supa-oauth';
 // Required Google Workspace scopes
 export const REQUIRED_WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/spreadsheets.readonly',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
@@ -251,7 +252,7 @@ export async function googleSignIn(): Promise<{ user: AuthUser; accessToken: str
     provider: 'google',
     options: {
       redirectTo: targetRedirect,
-      scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid',
+      scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid',
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
