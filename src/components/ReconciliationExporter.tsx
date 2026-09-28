@@ -38,9 +38,12 @@ export const ReconciliationExporter: React.FC<ReconciliationExporterProps> = ({
 
     try {
       // 1. Create target folder
+      console.log('Starting export, creating folder:', newFolderName);
       const folder = await createDriveFolder(newFolderName, accessToken);
       const targetFolderId = folder.id;
-      setExportedFolderUrl(`https://drive.google.com/drive/folders/${targetFolderId}`);
+      const url = `https://drive.google.com/drive/folders/${targetFolderId}`;
+      setExportedFolderUrl(url);
+      console.log('Folder created, URL set:', url);
 
       // 2. Iterate and copy files
       let copiedCount = 0;
