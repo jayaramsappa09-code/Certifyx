@@ -185,6 +185,7 @@ export function formatFileSize(sizeInput?: string | number): string {
 interface StudentExpandedDetailsCardProps {
   student: StudentStatusRecord;
   searchQuery: string;
+  isRecentlyCompleted?: boolean;
   onToggleDriveUploaded: (rollNo: string, current: boolean) => void;
   onToggleSheetUpdated: (rollNo: string, current: boolean) => void;
   onToggleSubmitted: (rollNo: string, current: boolean) => void;
@@ -200,6 +201,7 @@ interface StudentExpandedDetailsCardProps {
 export const StudentExpandedDetailsCard: React.FC<StudentExpandedDetailsCardProps> = ({
   student,
   searchQuery,
+  isRecentlyCompleted,
   onToggleDriveUploaded,
   onToggleSheetUpdated,
   onToggleSubmitted,
@@ -242,9 +244,21 @@ export const StudentExpandedDetailsCard: React.FC<StudentExpandedDetailsCardProp
           </span>
 
           {student.overallStatus === 'COMPLETED' ? (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-700 shadow-sm shadow-emerald-950/50">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-700 shadow-sm shadow-emerald-950/50 transition-all duration-300 ${
+                isRecentlyCompleted
+                  ? 'animate-status-completed-pulse ring-2 ring-emerald-400/80 shadow-emerald-500/50 scale-105'
+                  : ''
+              }`}
+              title={isRecentlyCompleted ? 'Status transitioned from PENDING to COMPLETED!' : 'Verified & Completed'}
+            >
+              <CheckCircle2 className={`w-3.5 h-3.5 text-emerald-400 ${isRecentlyCompleted ? 'animate-bounce' : ''}`} />
               VERIFIED
+              {isRecentlyCompleted && (
+                <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-400 text-emerald-950 font-extrabold tracking-tight uppercase animate-pulse">
+                  New
+                </span>
+              )}
             </span>
           ) : student.overallStatus === 'UNSUBMITTED_MATCH' ? (
             <span
@@ -847,6 +861,51 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     () => students.filter((s) => s.overallStatus === 'NOT STARTED' || s.overallStatus === 'PENDING').length,
     [students]
   );
+
+  // Track previous statuses to detect when a student transitions from 'PENDING' to 'COMPLETED'
+  const prevStatusesRef = useRef<Map<string, string>>(new Map());
+  const [recentlyCompletedRollNos, setRecentlyCompletedRollNos] = useState<Set<string>>(new Set());
+  const initialStatusLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (!initialStatusLoadedRef.current) {
+      students.forEach((s) => {
+        prevStatusesRef.current.set(s.rollNo, s.overallStatus);
+      });
+      initialStatusLoadedRef.current = true;
+      return;
+    }
+
+    const prevMap = prevStatusesRef.current;
+    const newlyCompleted: string[] = [];
+
+    students.forEach((s) => {
+      const prev = prevMap.get(s.rollNo);
+      if (prev === 'PENDING' && s.overallStatus === 'COMPLETED') {
+        newlyCompleted.push(s.rollNo);
+      }
+      prevMap.set(s.rollNo, s.overallStatus);
+    });
+
+    if (newlyCompleted.length > 0) {
+      setRecentlyCompletedRollNos((current) => {
+        const next = new Set(current);
+        newlyCompleted.forEach((id) => next.add(id));
+        return next;
+      });
+
+      // Clear the subtle pulse animation after 3.8 seconds to provide immediate feedback without lingering indefinitely
+      const timer = setTimeout(() => {
+        setRecentlyCompletedRollNos((current) => {
+          const next = new Set(current);
+          newlyCompleted.forEach((id) => next.delete(id));
+          return next;
+        });
+      }, 3800);
+
+      return () => clearTimeout(timer);
+    }
+  }, [students]);
 
   // Student roster mutation state
   const [showRosterModal, setShowRosterModal] = useState(false);
@@ -2368,6 +2427,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   const isSelected = selectedRollNos.has(student.rollNo);
                   const isExpanded = expandedRollNos.has(student.rollNo);
                   const totalCerts = student.certificates.length || student.driveFiles.length;
+                  const isRecentlyCompleted = recentlyCompletedRollNos.has(student.rollNo);
 
                   return (
                     <React.Fragment key={student.rollNo}>
@@ -2593,9 +2653,21 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex flex-col items-center gap-1">
                           {student.overallStatus === 'COMPLETED' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-600 shadow-sm shadow-emerald-900/40">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-600 shadow-sm shadow-emerald-900/40 transition-all duration-300 ${
+                                isRecentlyCompleted
+                                  ? 'animate-status-completed-pulse ring-2 ring-emerald-400/80 shadow-emerald-500/50 scale-105'
+                                  : ''
+                              }`}
+                              title={isRecentlyCompleted ? 'Status transitioned from PENDING to COMPLETED!' : 'Verified & Completed'}
+                            >
+                              <CheckCircle2 className={`w-3.5 h-3.5 text-emerald-400 ${isRecentlyCompleted ? 'animate-bounce' : ''}`} />
                               VERIFIED
+                              {isRecentlyCompleted && (
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-400 text-emerald-950 font-extrabold tracking-tight uppercase animate-pulse">
+                                  New
+                                </span>
+                              )}
                             </span>
                           ) : student.overallStatus === 'UNSUBMITTED_MATCH' ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-950/90 text-indigo-300 border border-indigo-700 shadow-sm shadow-indigo-900/40" title="Roster match confirmed on Drive and Sheet, form submission remaining">
@@ -2760,6 +2832,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                           <StudentExpandedDetailsCard
                             student={student}
                             searchQuery={searchQuery}
+                            isRecentlyCompleted={isRecentlyCompleted}
                             onToggleDriveUploaded={onToggleDriveUploaded}
                             onToggleSheetUpdated={onToggleSheetUpdated}
                             onToggleSubmitted={onToggleSubmitted}
@@ -2882,6 +2955,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             const isSelected = selectedRollNos.has(student.rollNo);
             const isExpanded = expandedRollNos.has(student.rollNo);
             const totalCerts = student.certificates.length || student.driveFiles.length;
+            const isRecentlyCompleted = recentlyCompletedRollNos.has(student.rollNo);
 
             return (
               <div
@@ -2948,8 +3022,21 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   </div>
 
                   {student.overallStatus === 'COMPLETED' ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-700">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-700 transition-all duration-300 ${
+                        isRecentlyCompleted
+                          ? 'animate-status-completed-pulse ring-2 ring-emerald-400/80 shadow-emerald-500/50 scale-105'
+                          : ''
+                      }`}
+                      title={isRecentlyCompleted ? 'Status transitioned from PENDING to COMPLETED!' : 'Completed'}
+                    >
+                      <CheckCircle2 className={`w-3 h-3 text-emerald-400 ${isRecentlyCompleted ? 'animate-bounce' : ''}`} />
                       COMPLETED
+                      {isRecentlyCompleted && (
+                        <span className="inline-flex items-center px-1 py-0.2 rounded-full text-[8px] bg-emerald-400 text-emerald-950 font-extrabold uppercase animate-pulse">
+                          New
+                        </span>
+                      )}
                     </span>
                   ) : student.overallStatus === 'PENDING' ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/90 text-amber-300 border border-amber-700">
@@ -3149,6 +3236,7 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                     <StudentExpandedDetailsCard
                       student={student}
                       searchQuery={searchQuery}
+                      isRecentlyCompleted={isRecentlyCompleted}
                       onToggleDriveUploaded={onToggleDriveUploaded}
                       onToggleSheetUpdated={onToggleSheetUpdated}
                       onToggleSubmitted={onToggleSubmitted}
