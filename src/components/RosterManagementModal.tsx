@@ -88,6 +88,7 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
 
   // Roster view state
   const [rosterSearch, setRosterSearch] = useState('');
+  const [selectedRosterRolls, setSelectedRosterRolls] = useState<Set<string>>(new Set());
   const [editingRollNo, setEditingRollNo] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
@@ -383,6 +384,30 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
       if (onDeleteRosterStudent) {
         onDeleteRosterStudent(rollNo);
       }
+      setSelectedRosterRolls(prev => {
+        const next = new Set(prev);
+        next.delete(rollNo);
+        return next;
+      });
+    }
+  };
+
+  // Handle bulk delete selected students in roster
+  const handleBulkDeleteSelected = () => {
+    if (selectedRosterRolls.size === 0) return;
+    const rolls = Array.from(selectedRosterRolls);
+    if (
+      confirm(
+        `Are you sure you want to permanently delete ${rolls.length} selected student(s) from the class roster?`
+      )
+    ) {
+      rolls.forEach(r => {
+        if (onDeleteRosterStudent) {
+          onDeleteRosterStudent(r);
+        }
+      });
+      setSelectedRosterRolls(new Set());
+      onToast?.(`Deleted ${rolls.length} student(s) from class roster.`, 'success');
     }
   };
 
@@ -866,7 +891,7 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
           {/* TAB 3: CURRENT CLASS ROSTER */}
           {activeTab === 'VIEW_ROSTER' && (
             <div className="space-y-3">
-              {/* Search & Counter */}
+              {/* Search & Counter & Bulk Delete Toolbar */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="relative w-full sm:w-72">
                   <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -880,6 +905,16 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-slate-400">
+                  {selectedRosterRolls.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleBulkDeleteSelected}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete {selectedRosterRolls.size} Selected</span>
+                    </button>
+                  )}
                   <span>
                     Showing <strong className="text-white">{filteredRoster.length}</strong> of{' '}
                     <strong className="text-indigo-400">{FIXED_CLASS_ROSTER.length}</strong> registered students
@@ -892,6 +927,23 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="bg-slate-900/90 sticky top-0 text-[11px] text-slate-400 uppercase tracking-wider border-b border-slate-800">
                     <tr>
+                      <th className="p-3 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={
+                            filteredRoster.length > 0 &&
+                            filteredRoster.every((s) => selectedRosterRolls.has(s.rollNo))
+                          }
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedRosterRolls(new Set(filteredRoster.map((s) => s.rollNo)));
+                            } else {
+                              setSelectedRosterRolls(new Set());
+                            }
+                          }}
+                          className="rounded border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                        />
+                      </th>
                       <th className="p-3 w-12 text-center">#</th>
                       <th className="p-3 w-36">Roll Number</th>
                       <th className="p-3">Student Name</th>
@@ -899,69 +951,92 @@ export const RosterManagementModal: React.FC<RosterManagementModalProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {filteredRoster.map((student, idx) => (
-                      <tr key={student.rollNo} className="hover:bg-slate-900/40 transition">
-                        <td className="p-3 text-slate-500 text-center font-mono text-[11px]">
-                          {idx + 1}
-                        </td>
-                        <td className="p-3 font-mono font-bold text-indigo-300">
-                          {student.rollNo}
-                        </td>
-                        <td className="p-3">
-                          {editingRollNo === student.rollNo ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                value={editingName}
-                                onChange={(e) => setEditingName(e.target.value)}
-                                className="px-2 py-1 bg-slate-900 border border-indigo-500 rounded-lg text-xs text-white uppercase w-full"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleSaveEdit(student.rollNo)}
-                                className="p-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded cursor-pointer"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingRollNo(null)}
-                                className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="font-semibold text-white">{student.name}</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-center">
-                          {editingRollNo !== student.rollNo && (
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingRollNo(student.rollNo);
-                                  setEditingName(student.name);
-                                }}
-                                className="p-1 text-slate-400 hover:text-indigo-300 hover:bg-slate-800 rounded transition cursor-pointer"
-                                title="Edit Student Name"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(student.rollNo, student.name)}
-                                className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition cursor-pointer"
-                                title="Delete Student"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredRoster.map((student, idx) => {
+                      const isSelected = selectedRosterRolls.has(student.rollNo);
+                      return (
+                        <tr
+                          key={student.rollNo}
+                          className={`hover:bg-slate-900/40 transition ${
+                            isSelected ? 'bg-indigo-950/20' : ''
+                          }`}
+                        >
+                          <td className="p-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                setSelectedRosterRolls((prev) => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) next.add(student.rollNo);
+                                  else next.delete(student.rollNo);
+                                  return next;
+                                });
+                              }}
+                              className="rounded border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-3 text-slate-500 text-center font-mono text-[11px]">
+                            {idx + 1}
+                          </td>
+                          <td className="p-3 font-mono font-bold text-indigo-300">
+                            {student.rollNo}
+                          </td>
+                          <td className="p-3">
+                            {editingRollNo === student.rollNo ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={editingName}
+                                  onChange={(e) => setEditingName(e.target.value)}
+                                  className="px-2 py-1 bg-slate-900 border border-indigo-500 rounded-lg text-xs text-white uppercase w-full"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEdit(student.rollNo)}
+                                  className="p-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded cursor-pointer"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingRollNo(null)}
+                                  className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="font-semibold text-white">{student.name}</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center">
+                            {editingRollNo !== student.rollNo && (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingRollNo(student.rollNo);
+                                    setEditingName(student.name);
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-indigo-300 hover:bg-slate-800 rounded transition cursor-pointer"
+                                  title="Edit Student Name"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(student.rollNo, student.name)}
+                                  className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition cursor-pointer"
+                                  title="Delete Student"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

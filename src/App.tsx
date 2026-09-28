@@ -1516,6 +1516,32 @@ export default function App() {
     }
   }, [currentUser, refreshLocalSync]);
 
+  const handleBatchDeleteRosterStudents = useCallback((rollNos: string[]) => {
+    if (!rollNos || rollNos.length === 0) return;
+    try {
+      let count = 0;
+      rollNos.forEach((roll) => {
+        const cleanRoll = roll.toUpperCase().trim();
+        try {
+          deleteRosterStudent(cleanRoll);
+          deleteStudentStatusFromSupabase(cleanRoll);
+          count++;
+        } catch {}
+      });
+
+      addAuditLog(
+        'Bulk Roster Students Deleted',
+        currentUser?.email || 'admin',
+        `Bulk deleted ${count} students (${rollNos.slice(0, 5).join(', ')}${rollNos.length > 5 ? '...' : ''})`,
+        'SETTINGS'
+      );
+      showToast(`Successfully deleted ${count} student(s) from roster and database!`, 'success');
+      refreshLocalSync();
+    } catch (e: any) {
+      showToast(e.message || 'Failed to bulk delete students.', 'error');
+    }
+  }, [currentUser, refreshLocalSync]);
+
   // Toggle Drive Uploaded Status manually (Admin Override)
   const handleToggleDriveUploaded = (rollNo: string, current: boolean) => {
     const nextVal = !current;
@@ -2179,6 +2205,7 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                 onBatchAddRosterStudents={handleBatchAddRosterStudents}
                 onEditRosterStudent={handleEditRosterStudent}
                 onDeleteRosterStudent={handleDeleteRosterStudent}
+                onBatchDeleteRosterStudents={handleBatchDeleteRosterStudents}
                 onToast={showToast}
               />
             </ErrorBoundary>

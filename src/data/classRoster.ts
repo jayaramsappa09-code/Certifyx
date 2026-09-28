@@ -236,6 +236,25 @@ export function deleteRosterStudent(rollNo: string): void {
   updateRosterMap();
 }
 
+export function deleteBatchRosterStudents(rollNos: string[]): number {
+  if (!rollNos || rollNos.length === 0) return 0;
+  const normalizedSet = new Set(rollNos.map(r => r.toUpperCase().trim()));
+  const initialLength = FIXED_CLASS_ROSTER.length;
+  
+  for (let i = FIXED_CLASS_ROSTER.length - 1; i >= 0; i--) {
+    if (normalizedSet.has(FIXED_CLASS_ROSTER[i].rollNo.toUpperCase().trim())) {
+      FIXED_CLASS_ROSTER.splice(i, 1);
+    }
+  }
+
+  const deletedCount = initialLength - FIXED_CLASS_ROSTER.length;
+  try {
+    localStorage.setItem('ccam_dynamic_roster', JSON.stringify(FIXED_CLASS_ROSTER));
+  } catch {}
+  updateRosterMap();
+  return deletedCount;
+}
+
 export function resetRosterToDefault(): void {
   FIXED_CLASS_ROSTER.length = 0;
   FIXED_CLASS_ROSTER.push(...FIXED_CLASS_ROSTER_STATIC);

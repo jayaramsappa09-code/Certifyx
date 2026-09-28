@@ -90,6 +90,7 @@ interface StudentTableProps {
   };
   onEditRosterStudent?: (rollNo: string, newName: string) => void;
   onDeleteRosterStudent?: (rollNo: string) => void;
+  onBatchDeleteRosterStudents?: (rollNos: string[]) => void;
   onToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -185,10 +186,12 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onBatchAddRosterStudents,
   onEditRosterStudent,
   onDeleteRosterStudent,
+  onBatchDeleteRosterStudents,
   onToast,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [copiedRollNo, setCopiedRollNo] = useState<string | null>(null);
   const [expandedRollNos, setExpandedRollNos] = useState<Set<string>>(new Set());
@@ -562,6 +565,18 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     } else {
       rollNos.forEach((r) => onToggleSheetUpdated(r, !sheetUpdated));
     }
+  };
+
+  const handleExecuteBulkDelete = () => {
+    if (selectedRollNos.size === 0) return;
+    const rollNos = Array.from(selectedRollNos);
+    if (onBatchDeleteRosterStudents) {
+      onBatchDeleteRosterStudents(rollNos);
+    } else if (onDeleteRosterStudent) {
+      rollNos.forEach((r) => onDeleteRosterStudent(r));
+    }
+    setSelectedRollNos(new Set());
+    setShowBulkDeleteConfirm(false);
   };
 
   const issueCounts = useMemo(() => {
@@ -1271,6 +1286,56 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                 title="Mark selected Submitted = FALSE"
               >
                 <span>✗</span>
+              </button>
+            </div>
+
+            {/* Bulk Delete Students Button */}
+            <button
+              type="button"
+              onClick={() => setShowBulkDeleteConfirm(true)}
+              className="ml-auto px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition shadow-sm"
+              title={`Permanently delete ${selectedRollNos.size} selected students`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete {selectedRollNos.size} Selected</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal Dialog */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-md bg-slate-900 border-2 border-rose-500/40 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Delete Selected Students?</h3>
+                <p className="text-xs text-slate-400">Permanently remove from class roster & database</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed bg-rose-950/20 border border-rose-900/30 p-3 rounded-xl">
+              You are about to permanently delete <strong className="text-rose-300">{selectedRollNos.size} student(s)</strong> ({Array.from(selectedRollNos).slice(0, 4).join(', ')}{selectedRollNos.size > 4 ? '...' : ''}). This action will remove their roster records and database entries.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteBulkDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-rose-600/30 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Delete {selectedRollNos.size} Students</span>
               </button>
             </div>
           </div>
