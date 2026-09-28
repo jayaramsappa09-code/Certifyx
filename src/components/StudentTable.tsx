@@ -83,6 +83,10 @@ interface StudentTableProps {
   driveFiles?: DriveCertificateFile[];
   reconciliationAnalysis?: ReconciliationAnalysis;
   lastScannedTimestamp?: string | null;
+  lastLocalModificationTime?: string | null;
+  pendingUpdatesCount?: number;
+  isPushingToCloud?: boolean;
+  onPushToCloud?: () => void | Promise<void>;
   dateFilterConfig?: DateRangeFilterConfig;
   onToggleSubmitted: (rollNo: string, current: boolean) => void;
   onToggleDriveUploaded: (rollNo: string, current: boolean) => void;
@@ -827,6 +831,10 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   driveFiles = [],
   reconciliationAnalysis,
   lastScannedTimestamp,
+  lastLocalModificationTime,
+  pendingUpdatesCount = 0,
+  isPushingToCloud = false,
+  onPushToCloud,
   dateFilterConfig,
   onToggleSubmitted,
   onToggleDriveUploaded,
@@ -2370,29 +2378,86 @@ export const StudentTable: React.FC<StudentTableProps> = ({
             </button>
           </div>
 
-          {/* Last Scanned Timestamp Header Badge */}
-          <div
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-medium bg-slate-900/90 border border-slate-800 text-slate-300 shadow-sm"
-            title={`Last Drive/Sheets Sync: ${scannedTime.exact}`}
-          >
-            <span className="flex h-2 w-2 relative">
-              <span
-                className={`animate-ping absolute inline-flex h-full w-full rounded-full ${
-                  lastScannedTimestamp ? 'bg-emerald-400' : 'bg-slate-500'
-                } opacity-75`}
-              ></span>
-              <span
-                className={`relative inline-flex rounded-full h-2 w-2 ${
-                  lastScannedTimestamp ? 'bg-emerald-500' : 'bg-slate-600'
+          {/* Sync Status Indicator & Push to Cloud Header Badge */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-medium bg-slate-950/90 border border-slate-800 text-slate-300 shadow-sm"
+              title={`Last Local Modification: ${formatExactTimestamp(lastLocalModificationTime || undefined)}`}
+            >
+              <span className="flex h-2 w-2 relative">
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full ${
+                    pendingUpdatesCount > 0 ? 'bg-amber-400' : 'bg-blue-400'
+                  } opacity-75`}
+                ></span>
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    pendingUpdatesCount > 0 ? 'bg-amber-500' : 'bg-blue-500'
+                  }`}
+                ></span>
+              </span>
+              <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+                Sync Status:
+              </span>
+              {pendingUpdatesCount > 0 ? (
+                <span className="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-amber-950 text-amber-300 border border-amber-700/80 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 text-amber-400 animate-pulse" />
+                  <span>{pendingUpdatesCount} Unpushed Edit{pendingUpdatesCount > 1 ? 's' : ''}</span>
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-emerald-950 text-emerald-300 border border-emerald-800/80 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  <span>Synced</span>
+                </span>
+              )}
+              <span className="text-slate-500 text-[10px] border-l border-slate-800 pl-2 hidden sm:inline">
+                Local Edit: <span className="text-blue-300 font-mono font-bold">{lastLocalModificationTime ? formatScanTimestamp(lastLocalModificationTime).formatted : 'Never'}</span>
+              </span>
+            </div>
+
+            {onPushToCloud && (
+              <button
+                type="button"
+                onClick={() => onPushToCloud()}
+                disabled={isPushingToCloud}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer shadow-md active:scale-95 ${
+                  isPushingToCloud
+                    ? 'bg-blue-900 text-blue-200 cursor-wait'
+                    : pendingUpdatesCount > 0
+                    ? 'bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 text-white shadow-amber-600/30 animate-pulse'
+                    : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-blue-600/30'
                 }`}
-              ></span>
-            </span>
-            <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
-              Last Scanned:
-            </span>
-            <span className="text-emerald-300 font-mono font-semibold">
-              {scannedTime.formatted}
-            </span>
+                title="Manually trigger Supabase database updates for all offline local changes and student statuses"
+              >
+                <Database className={`w-3.5 h-3.5 ${isPushingToCloud ? 'animate-spin text-amber-300' : 'text-blue-200'}`} />
+                <span>{isPushingToCloud ? 'Pushing to Supabase...' : 'Push to Cloud'}</span>
+              </button>
+            )}
+
+            {/* Last Scanned Timestamp Header Badge */}
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-medium bg-slate-900/90 border border-slate-800 text-slate-300 shadow-sm"
+              title={`Last Drive/Sheets Sync: ${scannedTime.exact}`}
+            >
+              <span className="flex h-2 w-2 relative">
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full ${
+                    lastScannedTimestamp ? 'bg-emerald-400' : 'bg-slate-500'
+                  } opacity-75`}
+                ></span>
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    lastScannedTimestamp ? 'bg-emerald-500' : 'bg-slate-600'
+                  }`}
+                ></span>
+              </span>
+              <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+                Last Scanned:
+              </span>
+              <span className="text-emerald-300 font-mono font-semibold">
+                {scannedTime.formatted}
+              </span>
+            </div>
           </div>
         </div>
 

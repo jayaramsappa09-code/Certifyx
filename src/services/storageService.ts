@@ -32,7 +32,27 @@ const STORAGE_KEYS = {
   PENDING_UPDATES: 'ccam_offline_pending_updates',
   DYNAMIC_ROSTER: 'ccam_dynamic_roster',
   THEME: 'ccam_theme_preference',
+  LAST_LOCAL_MODIFICATION: 'ccam_last_local_modification_time',
 };
+
+// Local Modification Tracking Helpers
+export function getLastLocalModificationTime(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.LAST_LOCAL_MODIFICATION);
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastLocalModificationTime(timestamp?: string): string {
+  const iso = timestamp || new Date().toISOString();
+  try {
+    localStorage.setItem(STORAGE_KEYS.LAST_LOCAL_MODIFICATION, iso);
+  } catch (e) {
+    console.error('Failed to save last local modification time:', e);
+  }
+  return iso;
+}
 
 // 1. Submitted status (Map: normalized rollNo -> boolean)
 export function getSubmittedStatusMap(): Record<string, boolean> {
@@ -51,6 +71,7 @@ export function saveSubmittedStatus(rollNo: string, submitted: boolean): void {
     const map = getSubmittedStatusMap();
     map[rollNo.toUpperCase().trim()] = submitted;
     localStorage.setItem(STORAGE_KEYS.SUBMITTED_STATUS, JSON.stringify(map));
+    saveLastLocalModificationTime();
   } catch (e) {
     console.error('Failed to save submitted status:', e);
   }
@@ -63,6 +84,7 @@ export function setBatchSubmittedStatus(updates: Record<string, boolean>): void 
       map[r.toUpperCase().trim()] = s;
     }
     localStorage.setItem(STORAGE_KEYS.SUBMITTED_STATUS, JSON.stringify(map));
+    saveLastLocalModificationTime();
   } catch (e) {
     console.error('Failed to save batch submitted status:', e);
   }
@@ -85,6 +107,7 @@ export function saveDriveStatusOverride(rollNo: string, overrideVal: boolean): v
     const map = getDriveStatusOverrideMap();
     map[rollNo.toUpperCase().trim()] = overrideVal;
     localStorage.setItem(STORAGE_KEYS.DRIVE_STATUS_OVERRIDES, JSON.stringify(map));
+    saveLastLocalModificationTime();
   } catch (e) {
     console.error('Failed to save drive override:', e);
   }
@@ -97,6 +120,7 @@ export function setBatchDriveStatusOverride(updates: Record<string, boolean>): v
       map[r.toUpperCase().trim()] = s;
     }
     localStorage.setItem(STORAGE_KEYS.DRIVE_STATUS_OVERRIDES, JSON.stringify(map));
+    saveLastLocalModificationTime();
   } catch (e) {
     console.error('Failed to save batch drive override:', e);
   }
@@ -119,6 +143,7 @@ export function saveSheetStatusOverride(rollNo: string, overrideVal: boolean): v
     const map = getSheetStatusOverrideMap();
     map[rollNo.toUpperCase().trim()] = overrideVal;
     localStorage.setItem(STORAGE_KEYS.SHEET_STATUS_OVERRIDES, JSON.stringify(map));
+    saveLastLocalModificationTime();
   } catch (e) {
     console.error('Failed to save sheet override:', e);
   }
@@ -131,6 +156,7 @@ export function setBatchSheetStatusOverride(updates: Record<string, boolean>): v
       map[r.toUpperCase().trim()] = s;
     }
     localStorage.setItem(STORAGE_KEYS.SHEET_STATUS_OVERRIDES, JSON.stringify(map));
+    saveLastLocalModificationTime();
   } catch (e) {
     console.error('Failed to save batch sheet override:', e);
   }

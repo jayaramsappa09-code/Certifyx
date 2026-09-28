@@ -42,6 +42,8 @@ import {
   clearPendingUpdates,
   getThemePreference,
   saveThemePreference,
+  getLastLocalModificationTime,
+  saveLastLocalModificationTime,
 } from './services/storageService';
 import {
   exportClassSummaryCsv,
@@ -295,6 +297,72 @@ export default function App() {
   const [pendingUpdates, setPendingUpdates] = useState<PendingUpdateRecord[]>(getPendingUpdates());
   const [showPendingUpdatesModal, setShowPendingUpdatesModal] = useState(false);
   const [isSyncingPending, setIsSyncingPending] = useState(false);
+
+  // Local Modification Tracking & Push to Cloud
+  const [lastLocalModificationTime, setLastLocalModificationTime] = useState<string | null>(
+    () => getLastLocalModificationTime()
+  );
+  const [isPushingToCloud, setIsPushingToCloud] = useState<boolean>(false);
+
+  const handlePushToCloud = async () => {
+    if (isPushingToCloud) return;
+    setIsPushingToCloud(true);
+    try {
+      await flushPendingStudentStatusBroadcasts();
+
+      const statusPayloads = studentStatuses.map((s) => ({
+        rollNo: s.rollNo,
+        name: s.name,
+        driveUploaded: Boolean(s.driveUploaded),
+        sheetUpdated: Boolean(s.sheetUpdated),
+        submitted: Boolean(s.submitted),
+        overallStatus: s.overallStatus,
+        updatedBy: currentUser?.email || 'admin',
+        updatedAt: new Date().toISOString(),
+      }));
+
+      const rosterList = FIXED_CLASS_ROSTER.map((r) => ({
+        rollNo: r.rollNo,
+        name: r.name,
+        email: r.email,
+        phone: r.phone,
+      }));
+
+      const res = await pushFullDatabaseToSupabase({
+        roster: rosterList,
+        statuses: statusPayloads,
+        userEmail: currentUser?.email || 'admin',
+      });
+
+      if (res.success) {
+        clearPendingUpdates();
+        setPendingUpdates([]);
+        const nowIso = new Date().toISOString();
+        saveLastLocalModificationTime(nowIso);
+        setLastLocalModificationTime(nowIso);
+
+        addAuditLog(
+          'Push to Cloud',
+          currentUser?.email || 'admin',
+          `Successfully pushed ${res.statusCount} student statuses and ${res.rosterCount} roster entries to Supabase Postgres database.`,
+          'SYNC'
+        );
+
+        showToast(
+          `🚀 Push to Cloud Complete! Updated ${res.statusCount} student records in Supabase database.`,
+          'success'
+        );
+      } else {
+        const err = res.errors.length > 0 ? res.errors[0] : 'Could not reach Supabase database.';
+        showToast(`Cloud Push Notice: ${err}`, 'info');
+      }
+    } catch (e: any) {
+      console.error('Error during Push to Cloud:', e);
+      showToast(`Push to Cloud error: ${e.message || 'Check connection'}`, 'error');
+    } finally {
+      setIsPushingToCloud(false);
+    }
+  };
 
   const applySyncResult = (result: SyncEngineResult) => {
     setStudentStatuses(result.studentStatuses);
@@ -2202,6 +2270,10 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
                   sheetSyncProof?.timestamp ||
                   null
                 }
+                lastLocalModificationTime={lastLocalModificationTime}
+                pendingUpdatesCount={pendingUpdates.length}
+                isPushingToCloud={isPushingToCloud}
+                onPushToCloud={handlePushToCloud}
                 dateFilterConfig={dateFilterConfig}
                 onToggleSubmitted={handleToggleSubmitted}
                 onToggleDriveUploaded={handleToggleDriveUploaded}
