@@ -228,22 +228,26 @@ async function executeStudentStatusBroadcast(
     }
 
     try {
-      await channel.send({
-        type: 'broadcast',
-        event: 'STUDENT_STATUS_MUTATED',
-        payload,
-      });
+      if (channel && typeof channel.send === 'function') {
+        await channel.send({
+          type: 'broadcast',
+          event: 'STUDENT_STATUS_MUTATED',
+          payload,
+        });
+      }
     } catch (sendErr) {
       // If channel is stale, retry once with fresh channel
       cachedBroadcastChannel = null;
       const freshChannel = client.channel('student_records_realtime');
       await freshChannel.subscribe();
       cachedBroadcastChannel = freshChannel;
-      await freshChannel.send({
-        type: 'broadcast',
-        event: 'STUDENT_STATUS_MUTATED',
-        payload,
-      });
+      if (freshChannel && typeof freshChannel.send === 'function') {
+        await freshChannel.send({
+          type: 'broadcast',
+          event: 'STUDENT_STATUS_MUTATED',
+          payload,
+        });
+      }
     }
 
     // 2. Persist/Upsert to Supabase Postgres database if table exists
@@ -1001,11 +1005,17 @@ export function subscribeToStudentStatusesRealtime(
       }
     },
     broadcast: (payload: StudentStatusRealtimePayload) => {
-      channel.send({
-        type: 'broadcast',
-        event: 'STUDENT_STATUS_MUTATED',
-        payload,
-      });
+      if (channel && typeof channel.send === 'function') {
+        try {
+          channel.send({
+            type: 'broadcast',
+            event: 'STUDENT_STATUS_MUTATED',
+            payload,
+          });
+        } catch (e) {
+          console.warn('Channel send error:', e);
+        }
+      }
     },
   };
 }

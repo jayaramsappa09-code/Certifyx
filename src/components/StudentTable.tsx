@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Search,
@@ -851,12 +851,12 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   isPushingToCloud = false,
   onPushToCloud,
   dateFilterConfig,
-  onToggleSubmitted,
-  onToggleDriveUploaded,
-  onToggleSheetUpdated,
-  onBatchSetSubmitted,
-  onBatchSetDriveUploaded,
-  onBatchSetSheetUpdated,
+  onToggleSubmitted: onToggleSubmittedProp,
+  onToggleDriveUploaded: onToggleDriveUploadedProp,
+  onToggleSheetUpdated: onToggleSheetUpdatedProp,
+  onBatchSetSubmitted: onBatchSetSubmittedProp,
+  onBatchSetDriveUploaded: onBatchSetDriveUploadedProp,
+  onBatchSetSheetUpdated: onBatchSetSheetUpdatedProp,
   onOpenDetails,
   activeFilter,
   setActiveFilter,
@@ -879,6 +879,60 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onToast,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+
+  // 1-Click Status Toggles: Tactile Mobile Haptic Feedback using browser Vibration API
+  const triggerHapticFeedback = useCallback(() => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        // Short light tap tactile feedback (20 milliseconds is perfect for responsive clicks)
+        navigator.vibrate(20);
+      } catch (e) {
+        console.warn('Tactile haptic vibration blocked or unsupported:', e);
+      }
+    }
+  }, []);
+
+  const onToggleSubmitted = useCallback((rollNo: string, current: boolean) => {
+    triggerHapticFeedback();
+    if (onToggleSubmittedProp) {
+      onToggleSubmittedProp(rollNo, current);
+    }
+  }, [onToggleSubmittedProp, triggerHapticFeedback]);
+
+  const onToggleDriveUploaded = useCallback((rollNo: string, current: boolean) => {
+    triggerHapticFeedback();
+    if (onToggleDriveUploadedProp) {
+      onToggleDriveUploadedProp(rollNo, current);
+    }
+  }, [onToggleDriveUploadedProp, triggerHapticFeedback]);
+
+  const onToggleSheetUpdated = useCallback((rollNo: string, current: boolean) => {
+    triggerHapticFeedback();
+    if (onToggleSheetUpdatedProp) {
+      onToggleSheetUpdatedProp(rollNo, current);
+    }
+  }, [onToggleSheetUpdatedProp, triggerHapticFeedback]);
+
+  const onBatchSetSubmitted = useCallback((rollNos: string[], submitted: boolean) => {
+    triggerHapticFeedback();
+    if (onBatchSetSubmittedProp) {
+      onBatchSetSubmittedProp(rollNos, submitted);
+    }
+  }, [onBatchSetSubmittedProp, triggerHapticFeedback]);
+
+  const onBatchSetDriveUploaded = useCallback((rollNos: string[], driveUploaded: boolean) => {
+    triggerHapticFeedback();
+    if (onBatchSetDriveUploadedProp) {
+      onBatchSetDriveUploadedProp(rollNos, driveUploaded);
+    }
+  }, [onBatchSetDriveUploadedProp, triggerHapticFeedback]);
+
+  const onBatchSetSheetUpdated = useCallback((rollNos: string[], sheetUpdated: boolean) => {
+    triggerHapticFeedback();
+    if (onBatchSetSheetUpdatedProp) {
+      onBatchSetSheetUpdatedProp(rollNos, sheetUpdated);
+    }
+  }, [onBatchSetSheetUpdatedProp, triggerHapticFeedback]);
   const [selectedStudentForQRCode, setSelectedStudentForQRCode] = useState<StudentStatusRecord | null>(null);
   const [selectedRollNos, setSelectedRollNos] = useState<Set<string>>(new Set());
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
