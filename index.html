@@ -18,8 +18,18 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
-  <body>
-    <div id="root"></div>
+  <body class="bg-slate-950 text-slate-100 min-h-screen">
+    <div id="root">
+      <!-- High-fidelity inline splash screen to prevent any white screen during bundle loading -->
+      <div style="display:flex;min-height:100vh;align-items:center;justify-content:center;background:#090d16;color:#f1f5f9;font-family:system-ui,-apple-system,sans-serif;">
+        <div style="text-align:center;padding:2rem;">
+          <div style="width:42px;height:42px;border:3.5px solid #1e293b;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.85s linear infinite;margin:0 auto 1.25rem;"></div>
+          <h2 style="font-size:1.15rem;font-weight:700;letter-spacing:-0.025em;margin:0 0 0.25rem 0;color:#f8fafc;">Class Certificate Automation Manager</h2>
+          <p style="font-size:0.875rem;color:#94a3b8;margin:0;">Loading application...</p>
+        </div>
+      </div>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
