@@ -24,6 +24,7 @@ import {
   Wand2,
   CheckCheck,
   Zap,
+  Trash2,
 } from 'lucide-react';
 import { DriveCertificateFile } from '../types';
 import { FIXED_CLASS_ROSTER } from '../data/classRoster';
@@ -36,6 +37,7 @@ import {
   saveManualFileOverride,
   saveDuplicateResolution,
   getDuplicateResolutions,
+  removeAllDuplicateFiles,
   addAuditLog,
   getDynamicRoster,
 } from '../services/storageService';
@@ -49,87 +51,8 @@ interface ManualReviewQueueProps {
   userEmail: string;
 }
 
-/**
- * Lightweight Certificate Thumbnail Component with automatic fallback
- */
-export const CertificateThumbnail: React.FC<{
-  file: DriveCertificateFile;
-  onClick?: () => void;
-  size?: 'sm' | 'md' | 'lg';
-  className?: string;
-}> = ({ file, onClick, size = 'md', className = '' }) => {
-  const [imgError, setImgError] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
-
-  // Generate Google Drive thumbnail URL
-  const thumbnailUrl =
-    file.thumbnailLink ||
-    (file.id && !file.id.startsWith('seed_')
-      ? `https://drive.google.com/thumbnail?id=${file.id}&sz=w400`
-      : null);
-
-  const isPdf =
-    file.mimeType?.includes('pdf') || file.name?.toLowerCase().endsWith('.pdf');
-  const isImage =
-    file.mimeType?.includes('image') ||
-    /\.(jpe?g|png|webp|gif|bmp)$/i.test(file.name || '');
-
-  const ext = file.name ? file.name.split('.').pop()?.toUpperCase() || 'FILE' : 'DOC';
-
-  const sizeClasses = {
-    sm: 'w-12 h-14 min-w-12',
-    md: 'w-20 h-24 min-w-20',
-    lg: 'w-full h-44',
-  }[size];
-
-  return (
-    <div
-      onClick={onClick}
-      className={`group relative rounded-xl border border-slate-800 bg-slate-950 overflow-hidden flex flex-col items-center justify-center cursor-pointer transition hover:border-blue-500/60 hover:shadow-lg hover:shadow-blue-500/10 ${sizeClasses} ${className}`}
-      title="Click to preview certificate"
-    >
-      {thumbnailUrl && !imgError ? (
-        <>
-          {!imgLoaded && (
-            <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center">
-              <FileText className="w-5 h-5 text-slate-600" />
-            </div>
-          )}
-          <img
-            src={thumbnailUrl}
-            alt={file.name}
-            className={`w-full h-full object-cover transition duration-200 group-hover:scale-105 ${
-              imgLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
-            onLoad={() => setImgLoaded(true)}
-            onError={() => setImgError(true)}
-            loading="lazy"
-          />
-        </>
-      ) : (
-        /* Fallback Document Icon preview */
-        <div className="w-full h-full flex flex-col items-center justify-center p-2 text-center bg-gradient-to-br from-slate-900 to-slate-950">
-          {isImage ? (
-            <ImageIcon className="w-6 h-6 text-indigo-400 mb-1" />
-          ) : (
-            <FileText className="w-6 h-6 text-blue-400 mb-1" />
-          )}
-          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase">
-            {ext}
-          </span>
-        </div>
-      )}
-
-      {/* Hover Overlay with Preview Icon */}
-      <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-white">
-        <div className="p-1.5 rounded-full bg-blue-600 shadow-md">
-          <Eye className="w-3.5 h-3.5" />
-        </div>
-        <span className="text-[10px] font-bold tracking-tight">Preview</span>
-      </div>
-    </div>
-  );
-};
+import { CertificateThumbnail } from './CertificateThumbnail';
+export { CertificateThumbnail };
 
 export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
   unidentifiedFiles,
@@ -366,6 +289,18 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
     onRefreshAfterResolution();
   };
 
+  // One-click batch remove all duplicates
+  const handleRemoveAllDuplicates = () => {
+    if (duplicateFiles.length === 0) {
+      showToast('No duplicate files to remove.');
+      return;
+    }
+
+    const { removedCount, keptCount } = removeAllDuplicateFiles(duplicateFiles, userEmail);
+    showToast(`Successfully removed ${removedCount} duplicate certificates! Kept ${keptCount} primary files.`);
+    onRefreshAfterResolution();
+  };
+
   const certTypeOptions = [
     'Hackathon / Contest',
     'Course Completion',
@@ -559,11 +494,60 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {activeSubTab === 'duplicates' && duplicateFiles.length > 0 && (
+            <button
+              type="button"
+              onClick={handleRemoveAllDuplicates}
+              className="px-3.5 py-1.5 bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-rose-600/30 flex items-center gap-1.5 cursor-pointer shrink-0"
+              title="Batch-remove all redundant duplicate submissions, keeping the primary certificate for each category"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Remove All Duplicates ({duplicateFiles.length})</span>
+            </button>
+          )}
+
           <span className="text-xs text-slate-400 font-medium">
             Showing <strong className="text-white">{currentFilesList.length}</strong> file(s)
           </span>
         </div>
       </div>
+
+      {/* Dedicated Duplicate File Cleanup Banner */}
+      {activeSubTab === 'duplicates' && duplicateFiles.length > 0 && (
+        <div className="bg-gradient-to-r from-rose-950/70 via-slate-900 to-indigo-950/70 border border-rose-800/60 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-1.5">
+                    <span>Batch Duplicate File Deduplication</span>
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-950 text-rose-300 border border-rose-700">
+                    {duplicateFiles.length} Redundant Copies
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Automatically pairs multiple submissions of the same certificate category, keeps the best primary certificate, and removes redundant duplicates in 1 click.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+              <button
+                type="button"
+                onClick={handleRemoveAllDuplicates}
+                className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Remove All Duplicates ({duplicateFiles.length})</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Automatic String Similarity Matching Engine Banner for Unidentified Files */}
       {activeSubTab === 'unidentified' && unidentifiedFiles.length > 0 && (
@@ -857,23 +841,27 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
                         onClick={() => handleResolveDuplicate(file, 'KEEP')}
-                        className={`py-1 text-[11px] font-semibold rounded-lg transition cursor-pointer ${
+                        className={`py-1 text-[11px] font-semibold rounded-lg transition cursor-pointer flex items-center justify-center gap-1 ${
                           dupRes === 'KEEP'
                             ? 'bg-emerald-600 text-white'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            : 'bg-slate-800 hover:bg-emerald-950/60 hover:text-emerald-300 text-slate-300'
                         }`}
+                        title="Keep this file as primary valid certificate"
                       >
-                        Keep Both
+                        <Check className="w-3 h-3" />
+                        <span>Keep Primary</span>
                       </button>
                       <button
                         onClick={() => handleResolveDuplicate(file, 'IGNORE')}
-                        className={`py-1 text-[11px] font-semibold rounded-lg transition cursor-pointer ${
+                        className={`py-1 text-[11px] font-semibold rounded-lg transition cursor-pointer flex items-center justify-center gap-1 ${
                           dupRes === 'IGNORE'
-                            ? 'bg-red-600 text-white'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 text-slate-300'
                         }`}
+                        title="Remove this duplicate submission"
                       >
-                        Ignore
+                        <Trash2 className="w-3 h-3" />
+                        <span>Remove</span>
                       </button>
                     </div>
                   )}
@@ -1103,33 +1091,27 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                     <>
                       <button
                         onClick={() => handleResolveDuplicate(file, 'KEEP')}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer ${
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1 ${
                           dupRes === 'KEEP'
                             ? 'bg-emerald-600 text-white'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            : 'bg-slate-800 hover:bg-emerald-950/60 hover:text-emerald-300 text-slate-300'
                         }`}
+                        title="Keep this file as primary valid certificate"
                       >
-                        Keep Both
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Keep Primary</span>
                       </button>
                       <button
                         onClick={() => handleResolveDuplicate(file, 'IGNORE')}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer ${
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1 ${
                           dupRes === 'IGNORE'
-                            ? 'bg-red-600 text-white'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 text-slate-300'
                         }`}
+                        title="Remove this duplicate submission"
                       >
-                        Ignore
-                      </button>
-                      <button
-                        onClick={() => handleResolveDuplicate(file, 'REVIEW')}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition cursor-pointer ${
-                          dupRes === 'REVIEW'
-                            ? 'bg-amber-600 text-slate-950'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                        }`}
-                      >
-                        Review Later
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove Duplicate</span>
                       </button>
                     </>
                   )}
@@ -1386,16 +1368,32 @@ export const ManualReviewQueue: React.FC<ManualReviewQueueProps> = ({
                   {activeSubTab === 'duplicates' && (
                     <>
                       <button
-                        onClick={() => handleResolveDuplicate(previewFile, 'KEEP')}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+                        onClick={() => {
+                          handleResolveDuplicate(previewFile, 'KEEP');
+                          if (previewIndex < currentFilesList.length - 1) {
+                            handleNextPreview();
+                          } else {
+                            setPreviewFile(null);
+                          }
+                        }}
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1.5"
                       >
-                        Keep
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Keep Primary</span>
                       </button>
                       <button
-                        onClick={() => handleResolveDuplicate(previewFile, 'IGNORE')}
-                        className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+                        onClick={() => {
+                          handleResolveDuplicate(previewFile, 'IGNORE');
+                          if (previewIndex < currentFilesList.length - 1) {
+                            handleNextPreview();
+                          } else {
+                            setPreviewFile(null);
+                          }
+                        }}
+                        className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1.5"
                       >
-                        Ignore
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove Duplicate</span>
                       </button>
                     </>
                   )}

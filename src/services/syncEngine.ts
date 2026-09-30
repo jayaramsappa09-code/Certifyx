@@ -342,6 +342,30 @@ export function runSyncEngine(input: SyncEngineInput): SyncEngineResult {
     driveFiles = [...driveFiles, ...sampleUnidentifiedSeedFiles];
   }
 
+  // Deduplicate raw Drive files by unique ID or unique (name + size) to eliminate ghost duplicates
+  const seenDriveFileIds = new Set<string>();
+  const deduplicatedDriveFiles: DriveCertificateFile[] = [];
+  for (const f of driveFiles) {
+    const key = f.id || `${f.name}__${f.size || 0}`;
+    if (!seenDriveFileIds.has(key)) {
+      seenDriveFileIds.add(key);
+      deduplicatedDriveFiles.push(f);
+    }
+  }
+  driveFiles = deduplicatedDriveFiles;
+
+  // Deduplicate Sheet rows by (rowIndex + rollNo + certificateType + certificateUrl)
+  const seenSheetRowKeys = new Set<string>();
+  const deduplicatedSheetRows: SheetRowRecord[] = [];
+  for (const r of sheetRows) {
+    const key = `${r.rowIndex}__${r.rollNo}__${r.certificateType || ''}__${r.certificateUrl || ''}`;
+    if (!seenSheetRowKeys.has(key)) {
+      seenSheetRowKeys.add(key);
+      deduplicatedSheetRows.push(r);
+    }
+  }
+  sheetRows = deduplicatedSheetRows;
+
   // Collections for review
   const unidentifiedFiles: DriveCertificateFile[] = [];
   const outsideClassFiles: DriveCertificateFile[] = [];

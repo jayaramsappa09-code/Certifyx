@@ -510,6 +510,90 @@ export function saveDuplicateResolution(fileId: string, resolution: 'KEEP' | 'IG
   }
 }
 
+/**
+ * Automatically resolves and removes duplicate files by grouping them by student & certificate category,
+ * designating the highest quality/newest file as KEEP, and marking all redundant copies as IGNORE.
+ */
+export function removeAllDuplicateFiles(
+  duplicateFiles: DriveCertificateFile[],
+  userEmail: string = 'admin'
+): { removedCount: number; keptCount: number } {
+  const resolutions = getDuplicateResolutions();
+  let removedCount = 0;
+  let keptCount = 0;
+
+  // Group duplicate files by student rollNo + detected certType
+  const groups = new Map<string, DriveCertificateFile[]>();
+  for (const f of duplicateFiles) {
+    const key = `${f.detectedRollNo || f.name}__${(f.detectedCertType || 'cert').toLowerCase()}`;
+    const list = groups.get(key) || [];
+    list.push(f);
+    groups.set(key, list);
+  }
+
+  for (const [, list] of groups.entries()) {
+    if (list.length === 0) continue;
+
+    if (list.length === 1) {
+      resolutions[list[0].id] = 'KEEP';
+      keptCount++;
+      continue;
+    }
+
+    // Sort to keep the best one:
+    // 1. Non-seed file preferred over seed file
+    // 2. Has thumbnail or webViewLink
+    // 3. Most recent modifiedTime
+    // 4. Larger file size
+    list.sort((a, b) => {
+      const aIsSeed = a.id?.startsWith('seed_') ? 1 : 0;
+      const bIsSeed = b.id?.startsWith('seed_') ? 1 : 0;
+      if (aIsSeed !== bIsSeed) return aIsSeed - bIsSeed;
+
+      const aTime = a.modifiedTime ? new Date(a.modifiedTime).getTime() : 0;
+      const bTime = b.modifiedTime ? new Date(b.modifiedTime).getTime() : 0;
+      if (bTime !== aTime) return bTime - aTime;
+
+      const aSize = Number(a.size) || 0;
+      const bSize = Number(b.size) || 0;
+      return bSize - aSize;
+    });
+
+    // Primary file is KEPT
+    resolutions[list[0].id] = 'KEEP';
+    keptCount++;
+
+    // All other copies are REMOVED / IGNORED
+    for (let i = 1; i < list.length; i++) {
+      resolutions[list[i].id] = 'IGNORE';
+      removedCount++;
+    }
+  }
+
+  try {
+    localStorage.setItem(STORAGE_KEYS.DUPLICATE_RESOLUTIONS, JSON.stringify(resolutions));
+  } catch (e) {
+    console.error('Failed to save bulk duplicate resolutions:', e);
+  }
+
+  addAuditLog(
+    'Removed Duplicates',
+    userEmail,
+    `Batch removed ${removedCount} duplicate certificate files, preserving ${keptCount} primary certificates.`,
+    'REVIEW'
+  );
+
+  return { removedCount, keptCount };
+}
+
+export function clearAllDuplicateResolutions(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.DUPLICATE_RESOLUTIONS);
+  } catch (e) {
+    console.error('Failed to clear duplicate resolutions:', e);
+  }
+}
+
 // 9. Synced Data Cache (Ensures additions in sheets or drive persist across reloads)
 export interface SyncedDataCache {
   driveFiles: DriveCertificateFile[];

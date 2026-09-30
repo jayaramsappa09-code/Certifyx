@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { supabase } from './services/supabaseClient';
 import {
   initAuth,
@@ -44,6 +44,7 @@ import {
   saveThemePreference,
   getLastLocalModificationTime,
   saveLastLocalModificationTime,
+  removeAllDuplicateFiles,
 } from './services/storageService';
 import {
   exportClassSummaryCsv,
@@ -94,16 +95,8 @@ import { Header } from './components/Header';
 import { DashboardStats } from './components/DashboardStats';
 import { StatusDistributionChart } from './components/StatusDistributionChart';
 import { StudentTable } from './components/StudentTable';
-import { StudentDetailModal } from './components/StudentDetailModal';
-import { ManualReviewQueue } from './components/ManualReviewQueue';
-import { GoogleIntegrationTab } from './components/GoogleIntegrationTab';
-import { SyncHistoryTab } from './components/SyncHistoryTab';
-import { AuditLogTab } from './components/AuditLogTab';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { DocumentationTab } from './components/DocumentationTab';
-import { OnboardingWizardModal } from './components/OnboardingWizardModal';
-import { GapDetailModal } from './components/GapDetailModal';
 import { AccessDeniedScreen } from './components/AccessDeniedScreen';
 import {
   GlobalSyncProgressBar,
@@ -112,20 +105,56 @@ import {
   SyncStepInfo,
   DetailedSyncProgress,
 } from './components/GlobalSyncProgressBar';
-import { ExportCenterModal } from './components/ExportCenterModal';
-import { AdvancedExportModal } from './components/AdvancedExportModal';
-import { BulkMappingUploadModal } from './components/BulkMappingUploadModal';
-import { AndroidAppDownloadModal } from './components/AndroidAppDownloadModal';
 import { DashboardPWAInstallCTA } from './components/DashboardPWAInstallCTA';
-import { EmailReminderModal } from './components/EmailReminderModal';
 import { DashboardDriveOrganizerHub } from './components/DashboardDriveOrganizerHub';
 import { DateRangeFilterBar } from './components/DateRangeFilterBar';
+
+// Lazy-loaded heavy modals and secondary tabs for optimal bundle size and instant load performance
+const StudentDetailModal = React.lazy(() =>
+  import('./components/StudentDetailModal').then((m) => ({ default: m.StudentDetailModal }))
+);
+const ManualReviewQueue = React.lazy(() =>
+  import('./components/ManualReviewQueue').then((m) => ({ default: m.ManualReviewQueue }))
+);
+const GoogleIntegrationTab = React.lazy(() =>
+  import('./components/GoogleIntegrationTab').then((m) => ({ default: m.GoogleIntegrationTab }))
+);
+const SyncHistoryTab = React.lazy(() =>
+  import('./components/SyncHistoryTab').then((m) => ({ default: m.SyncHistoryTab }))
+);
+const AuditLogTab = React.lazy(() =>
+  import('./components/AuditLogTab').then((m) => ({ default: m.AuditLogTab }))
+);
+const DocumentationTab = React.lazy(() =>
+  import('./components/DocumentationTab').then((m) => ({ default: m.DocumentationTab }))
+);
+const OnboardingWizardModal = React.lazy(() =>
+  import('./components/OnboardingWizardModal').then((m) => ({ default: m.OnboardingWizardModal }))
+);
+const GapDetailModal = React.lazy(() =>
+  import('./components/GapDetailModal').then((m) => ({ default: m.GapDetailModal }))
+);
+const ExportCenterModal = React.lazy(() =>
+  import('./components/ExportCenterModal').then((m) => ({ default: m.ExportCenterModal }))
+);
+const AdvancedExportModal = React.lazy(() =>
+  import('./components/AdvancedExportModal').then((m) => ({ default: m.AdvancedExportModal }))
+);
+const BulkMappingUploadModal = React.lazy(() =>
+  import('./components/BulkMappingUploadModal').then((m) => ({ default: m.BulkMappingUploadModal }))
+);
+const AndroidAppDownloadModal = React.lazy(() =>
+  import('./components/AndroidAppDownloadModal').then((m) => ({ default: m.AndroidAppDownloadModal }))
+);
+const EmailReminderModal = React.lazy(() =>
+  import('./components/EmailReminderModal').then((m) => ({ default: m.EmailReminderModal }))
+);
 import {
   DateRangeFilterConfig,
 } from './types';
 import { isStudentMatchingDateRange, getLatestStudentActivity, DateRangeAnalysisResult } from './utils/dateFilterUtils';
 import { calculateOverallStatus } from './utils/statusEngine';
-import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet, Layers, TrendingUp } from 'lucide-react';
+import { AlertCircle, CheckCircle2, RefreshCw, FileSpreadsheet, Layers, TrendingUp, Copy, Trash2 } from 'lucide-react';
 
 const recalculateStudentMismatch = (
   s: StudentStatusRecord,
@@ -296,9 +325,23 @@ export default function App() {
   const [duplicateFiles, setDuplicateFiles] = useState<DriveCertificateFile[]>([]);
   const [ambiguousCertFiles, setAmbiguousCertFiles] = useState<DriveCertificateFile[]>([]);
 
-  // History & Logs
-  const [syncHistory, setSyncHistory] = useState<SyncReport[]>(getSyncHistory());
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(getAuditLogs());
+  // History & Logs with safe try-catch initializers
+  const [syncHistory, setSyncHistory] = useState<SyncReport[]>(() => {
+    try {
+      return getSyncHistory();
+    } catch (e: any) {
+      console.error('[Certifyx App Init] Failed to load sync history:', e);
+      return [];
+    }
+  });
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => {
+    try {
+      return getAuditLogs();
+    } catch (e: any) {
+      console.error('[Certifyx App Init] Failed to load audit logs:', e);
+      return [];
+    }
+  });
   const [lastSyncReport, setLastSyncReport] = useState<SyncReport | null>(
     syncHistory.length > 0 ? syncHistory[0] : null
   );
@@ -340,7 +383,14 @@ export default function App() {
   const [showSetupWizardModal, setShowSetupWizardModal] = useState(false);
   const [showSheetProofModal, setShowSheetProofModal] = useState(false);
   const [showGapDetailModal, setShowGapDetailModal] = useState(false);
-  const [sheetSyncProof, setSheetSyncProof] = useState<SheetSyncProof | null>(getLastSheetSyncProof());
+  const [sheetSyncProof, setSheetSyncProof] = useState<SheetSyncProof | null>(() => {
+    try {
+      return getLastSheetSyncProof();
+    } catch (e) {
+      console.error('[Certifyx App Init] Failed to load sheet sync proof:', e);
+      return null;
+    }
+  });
   const [isRefreshingProof, setIsRefreshingProof] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgressState | null>(null);
@@ -350,7 +400,14 @@ export default function App() {
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
-  const [pendingUpdates, setPendingUpdates] = useState<PendingUpdateRecord[]>(getPendingUpdates());
+  const [pendingUpdates, setPendingUpdates] = useState<PendingUpdateRecord[]>(() => {
+    try {
+      return getPendingUpdates();
+    } catch (e) {
+      console.error('[Certifyx App Init] Failed to load pending updates:', e);
+      return [];
+    }
+  });
   const [showPendingUpdatesModal, setShowPendingUpdatesModal] = useState(false);
   const [isSyncingPending, setIsSyncingPending] = useState(false);
 
@@ -2001,6 +2058,20 @@ export default function App() {
     setAuditLogs(getAuditLogs());
   };
 
+  // Quick 1-click duplicate removal from dashboard
+  const handleRemoveAllDuplicatesQuick = () => {
+    if (duplicateFiles.length === 0) {
+      showToast('No duplicate files to remove.', 'info');
+      return;
+    }
+    const { removedCount, keptCount } = removeAllDuplicateFiles(
+      duplicateFiles,
+      currentUser?.email || 'admin'
+    );
+    showToast(`Removed ${removedCount} duplicate certificates! Preserved ${keptCount} primary files.`, 'success');
+    handleRefreshAfterResolution();
+  };
+
   // Auto-Sync Timer setup (Section 26)
   useEffect(() => {
     if (autoSyncTimerRef.current) {
@@ -2364,6 +2435,48 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
               onOpenSheetProof={() => setShowSheetProofModal(true)}
             />
 
+            {/* Duplicates Detected Banner with 1-Click Removal Action */}
+            {duplicateFiles.length > 0 && (
+              <div className="p-4 bg-gradient-to-r from-rose-950/70 via-slate-900 to-indigo-950/60 border border-rose-500/40 rounded-2xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+                <div className="flex items-center gap-3.5">
+                  <div className="p-2.5 rounded-2xl bg-rose-500/20 border border-rose-500/30 text-rose-400 shrink-0">
+                    <Copy className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-sm font-bold text-white tracking-tight">
+                        {duplicateFiles.length} Duplicate Certificate Submissions Detected
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-950 text-rose-300 border border-rose-700">
+                        Action Required
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Multiple certificate uploads share the same student &amp; category. Clean up redundant copies with one click.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleRemoveAllDuplicatesQuick}
+                    className="flex-1 sm:flex-initial px-4 py-2.5 bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove All Duplicates ({duplicateFiles.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('review')}
+                    className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer"
+                  >
+                    Review in Queue
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Student Table Review Work Area - Primary Focal Point */}
             <ErrorBoundary sectionName="Student Roster & Matrix">
               <StudentTable
@@ -2507,289 +2620,146 @@ Google Sheet:   ${sheetConfig?.spreadsheetName || 'Not configured'} (Sheet: ${sh
         {/* Tab 2: Needs Review Queue */}
         {activeTab === 'review' && (
           <ErrorBoundary sectionName="Review Queue">
-            <ManualReviewQueue
-              unidentifiedFiles={unidentifiedFiles}
-              outsideClassFiles={outsideClassFiles}
-              ambiguousCertFiles={ambiguousCertFiles}
-              duplicateFiles={duplicateFiles}
-              onRefreshAfterResolution={handleRefreshAfterResolution}
-              userEmail={currentUser?.email || 'admin'}
-            />
+            <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Loading Review Queue...</div>}>
+              <ManualReviewQueue
+                unidentifiedFiles={unidentifiedFiles}
+                outsideClassFiles={outsideClassFiles}
+                ambiguousCertFiles={ambiguousCertFiles}
+                duplicateFiles={duplicateFiles}
+                onRefreshAfterResolution={handleRefreshAfterResolution}
+                userEmail={currentUser?.email || 'admin'}
+              />
+            </Suspense>
           </ErrorBoundary>
         )}
 
 
       </main>
 
-      {showExportCenterModal && (
-        <ExportCenterModal
-          students={studentStatuses}
-          accessToken={accessToken}
-          onToast={showToast}
-          onClose={() => setShowExportCenterModal(false)}
+      <Suspense fallback={null}>
+        {showExportCenterModal && (
+          <ExportCenterModal
+            students={studentStatuses}
+            accessToken={accessToken}
+            onToast={showToast}
+            onClose={() => setShowExportCenterModal(false)}
+          />
+        )}
+        
+        {/* Student Detail Modal */}
+        {selectedStudentForDetail && (
+          <StudentDetailModal
+            student={selectedStudentForDetail}
+            onClose={() => setSelectedStudentForDetail(null)}
+            onToggleSubmitted={handleToggleSubmitted}
+            onToggleDriveUploaded={handleToggleDriveUploaded}
+            onToggleSheetUpdated={handleToggleSheetUpdated}
+            onOpenEmailReminder={(student) => {
+              setSelectedStudentForDetail(null);
+              setTargetStudentForReminder(student);
+              setShowEmailReminderModal(true);
+            }}
+          />
+        )}
+
+        {/* Gap Detail Auditor Modal */}
+        {showGapDetailModal && (
+          <GapDetailModal
+            isOpen={showGapDetailModal}
+            onClose={() => setShowGapDetailModal(false)}
+            students={studentStatuses}
+            sheetRows={sheetSyncProof?.rows || []}
+            driveFiles={Array.from(
+              new Map(
+                [
+                  ...studentStatuses.flatMap((s) => s.driveFiles || []),
+                  ...unidentifiedFiles,
+                  ...outsideClassFiles,
+                  ...duplicateFiles,
+                ]
+                  .filter(Boolean)
+                  .map((f) => [f.id || f.name, f])
+              ).values()
+            )}
+            onRefreshLiveProof={handleRefreshLiveSheetProof}
+            isRefreshing={isRefreshingProof}
+          />
+        )}
+
+        {/* Setup & Connection Wizard */}
+        {showSetupWizardModal && (
+          <OnboardingWizardModal
+            isOpen={showSetupWizardModal}
+            onClose={() => setShowSetupWizardModal(false)}
+            isGoogleConnected={Boolean(accessToken)}
+            driveConfig={driveConfig}
+            sheetConfig={sheetConfig}
+            onConnectGoogle={handleGoogleLogin}
+            onTriggerSync={handleSyncNow}
+            onToast={showToast}
+          />
+        )}
+
+        {/* Google Connect Options Modal */}
+        {showGoogleConnectModal && (
+          <OnboardingWizardModal
+            isOpen={showGoogleConnectModal}
+            onClose={() => setShowGoogleConnectModal(false)}
+            isGoogleConnected={Boolean(accessToken)}
+            driveConfig={driveConfig}
+            sheetConfig={sheetConfig}
+            onConnectGoogle={handleGoogleLogin}
+            onTriggerSync={handleSyncNow}
+            onToast={showToast}
+          />
+        )}
+
+        {/* Advanced Export & Analysis Modal */}
+        {showAdvancedExportModal && (
+          <AdvancedExportModal
+            isOpen={showAdvancedExportModal}
+            onClose={() => setShowAdvancedExportModal(false)}
+            students={studentStatuses}
+          />
+        )}
+
+        {/* Bulk CSV Filename Mapping Uploader Modal */}
+        {showBulkMappingModal && (
+          <BulkMappingUploadModal
+            isOpen={showBulkMappingModal}
+            onClose={() => setShowBulkMappingModal(false)}
+            unidentifiedFiles={unidentifiedFiles}
+            onRefreshAfterResolution={handleRefreshAfterResolution}
+            userEmail={currentUser?.email || 'admin'}
+          />
+        )}
+
+        {/* Email Reminder Dispatcher Modal */}
+        {showEmailReminderModal && (
+          <EmailReminderModal
+            isOpen={showEmailReminderModal}
+            onClose={() => {
+              setShowEmailReminderModal(false);
+              setTargetStudentForReminder(null);
+            }}
+            students={studentStatuses}
+            initialTargetRollNo={targetStudentForReminder?.rollNo}
+            driveConfig={driveConfig}
+            sheetConfig={sheetConfig}
+            onRecordAuditLog={(action, details) => {
+              addAuditLog(action, currentUser?.email || 'admin', details, 'STATUS');
+              setAuditLogs(getAuditLogs());
+            }}
+            onToast={showToast}
+          />
+        )}
+
+        {/* Android Application Download Center Modal */}
+        <AndroidAppDownloadModal
+          isOpen={showAndroidDownloadModal}
+          onClose={() => setShowAndroidDownloadModal(false)}
         />
-      )}
-      
-      {/* Student Detail Modal */}
-      {selectedStudentForDetail && (
-        <StudentDetailModal
-          student={selectedStudentForDetail}
-          onClose={() => setSelectedStudentForDetail(null)}
-          onToggleSubmitted={handleToggleSubmitted}
-          onToggleDriveUploaded={handleToggleDriveUploaded}
-          onToggleSheetUpdated={handleToggleSheetUpdated}
-          onOpenEmailReminder={(student) => {
-            setSelectedStudentForDetail(null);
-            setTargetStudentForReminder(student);
-            setShowEmailReminderModal(true);
-          }}
-        />
-      )}
-
-      {/* Gap Detail Auditor Modal */}
-      {showGapDetailModal && (
-        <GapDetailModal
-          isOpen={showGapDetailModal}
-          onClose={() => setShowGapDetailModal(false)}
-          students={studentStatuses}
-          sheetRows={sheetSyncProof?.rows || []}
-          driveFiles={Array.from(
-            new Map(
-              [
-                ...studentStatuses.flatMap((s) => s.driveFiles || []),
-                ...unidentifiedFiles,
-                ...outsideClassFiles,
-                ...duplicateFiles,
-              ]
-                .filter(Boolean)
-                .map((f) => [f.id || f.name, f])
-            ).values()
-          )}
-          onRefreshLiveProof={handleRefreshLiveSheetProof}
-          isRefreshing={isRefreshingProof}
-        />
-      )}
-
-      {/* Setup & Connection Wizard */}
-      {showSetupWizardModal && (
-        <OnboardingWizardModal
-          isOpen={showSetupWizardModal}
-          onClose={() => setShowSetupWizardModal(false)}
-          isGoogleConnected={Boolean(accessToken)}
-          driveConfig={driveConfig}
-          sheetConfig={sheetConfig}
-          onConnectGoogle={handleGoogleLogin}
-          onTriggerSync={handleSyncNow}
-          onToast={showToast}
-        />
-      )}
-
-      {/* Google Connect Options Modal */}
-      {showGoogleConnectModal && (
-        <OnboardingWizardModal
-          isOpen={showGoogleConnectModal}
-          onClose={() => setShowGoogleConnectModal(false)}
-          isGoogleConnected={Boolean(accessToken)}
-          driveConfig={driveConfig}
-          sheetConfig={sheetConfig}
-          onConnectGoogle={handleGoogleLogin}
-          onTriggerSync={handleSyncNow}
-          onToast={showToast}
-        />
-      )}
-
-      {/* Advanced Export & Analysis Modal */}
-      {showAdvancedExportModal && (
-        <AdvancedExportModal
-          isOpen={showAdvancedExportModal}
-          onClose={() => setShowAdvancedExportModal(false)}
-          students={studentStatuses}
-        />
-      )}
-
-      {/* Bulk CSV Filename Mapping Uploader Modal */}
-      {showBulkMappingModal && (
-        <BulkMappingUploadModal
-          isOpen={showBulkMappingModal}
-          onClose={() => setShowBulkMappingModal(false)}
-          unidentifiedFiles={unidentifiedFiles}
-          onRefreshAfterResolution={handleRefreshAfterResolution}
-          userEmail={currentUser?.email || 'admin'}
-        />
-      )}
-
-      {/* Email Reminder Dispatcher Modal */}
-      {showEmailReminderModal && (
-        <EmailReminderModal
-          isOpen={showEmailReminderModal}
-          onClose={() => {
-            setShowEmailReminderModal(false);
-            setTargetStudentForReminder(null);
-          }}
-          students={studentStatuses}
-          initialTargetRollNo={targetStudentForReminder?.rollNo}
-          driveConfig={driveConfig}
-          sheetConfig={sheetConfig}
-          onRecordAuditLog={(action, details) => {
-            addAuditLog(action, currentUser?.email || 'admin', details, 'STATUS');
-            setAuditLogs(getAuditLogs());
-          }}
-          onToast={showToast}
-        />
-      )}
-
-      {/* System Controls & Settings Modal */}
-      {showSystemControlsModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowSystemControlsModal(false);
-          }}
-        >
-          <div className="relative w-full max-w-6xl h-[85vh] flex flex-col rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-850 bg-slate-950 px-6 py-4">
-              <div className="flex items-center gap-2.5">
-                <span className="text-xl">⚙️</span>
-                <div>
-                  <h3 className="text-base font-bold text-white leading-tight">System Controls &amp; Settings</h3>
-                  <p className="text-[10px] text-slate-400">Configure integrations, review sync history, inspect audit logs, and view manuals.</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSystemControlsModal(false)}
-                className="rounded-xl border border-slate-850 bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-slate-700 hover:text-white cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-
-            {/* Modal Content layout (Sidebar + Main area) */}
-            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-              {/* Sidebar Tabs */}
-              <div className="w-full md:w-64 bg-slate-950/50 border-r border-slate-850 p-4 space-y-1.5 flex flex-row md:flex-col overflow-x-auto md:overflow-x-visible shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setSystemControlsTab('integration')}
-                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
-                    systemControlsTab === 'integration'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
-                  }`}
-                >
-                  <span className="text-sm">📂</span>
-                  <span>Google Integration</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSystemControlsTab('history')}
-                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
-                    systemControlsTab === 'history'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
-                  }`}
-                >
-                  <span className="text-sm">⏱️</span>
-                  <span>Sync Run History</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSystemControlsTab('audit')}
-                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
-                    systemControlsTab === 'audit'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
-                  }`}
-                >
-                  <span className="text-sm">🛡️</span>
-                  <span>Administrative Audit Log</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSystemControlsTab('docs')}
-                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
-                    systemControlsTab === 'docs'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
-                  }`}
-                >
-                  <span className="text-sm">📖</span>
-                  <span>Setup &amp; Verification Manual</span>
-                </button>
-              </div>
-
-              {/* Main Panel Content Area */}
-              <div className="flex-1 p-5 overflow-y-auto bg-slate-900/40">
-                {systemControlsTab === 'integration' && (
-                  <ErrorBoundary sectionName="Google Integration Settings">
-                    <GoogleIntegrationTab
-                      accessToken={accessToken}
-                      userEmail={currentUser?.email || 'admin'}
-                      driveConfig={driveConfig}
-                      sheetConfig={sheetConfig}
-                      settings={settings}
-                      onUpdateDriveConfig={(c) => {
-                        setDriveConfig(c);
-                        saveDriveConfig(c);
-                      }}
-                      onUpdateSheetConfig={(c) => {
-                        setSheetConfig(c);
-                        saveSheetConfig(c);
-                      }}
-                      onUpdateSettings={(newSettings) => {
-                        const updated = saveAppSettings(newSettings);
-                        setSettings(updated);
-                      }}
-                      onConnectGoogle={handleGoogleLogin}
-                      onOpenConnectOptions={() => handleGoogleLogin(true)}
-                      onOpenSheetProof={() => setShowGapDetailModal(true)}
-                      onDisconnectGoogle={handleGoogleLogout}
-                      onTriggerSync={handleSyncNow}
-                    />
-                  </ErrorBoundary>
-                )}
-
-                {systemControlsTab === 'history' && (
-                  <ErrorBoundary sectionName="Sync History Settings">
-                    <SyncHistoryTab
-                      history={syncHistory}
-                      onSelectReport={(r) => {
-                        setLastSyncReport(r);
-                        setShowSyncReportModal(true);
-                      }}
-                    />
-                  </ErrorBoundary>
-                )}
-
-                {systemControlsTab === 'audit' && (
-                  <ErrorBoundary sectionName="Administrative Audit Log">
-                    <AuditLogTab
-                      logs={auditLogs}
-                      onRefresh={() => setAuditLogs(getAuditLogs())}
-                    />
-                  </ErrorBoundary>
-                )}
-
-                {systemControlsTab === 'docs' && (
-                  <ErrorBoundary sectionName="Setup & Documentation Manual">
-                    <DocumentationTab />
-                  </ErrorBoundary>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Android Application Download Center Modal */}
-      <AndroidAppDownloadModal
-        isOpen={showAndroidDownloadModal}
-        onClose={() => setShowAndroidDownloadModal(false)}
-      />
+      </Suspense>
 
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-600">

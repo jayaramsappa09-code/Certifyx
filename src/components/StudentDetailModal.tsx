@@ -25,7 +25,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { StudentStatusRecord, DriveCertificateFile } from '../types';
-import { CertificateThumbnail } from './ManualReviewQueue';
+import { CertificateThumbnail } from './CertificateThumbnail';
 import { getStudentActivityEvents } from '../utils/dateFilterUtils';
 import { DiscrepancyProofCard } from './DiscrepancyProofCard';
 import {

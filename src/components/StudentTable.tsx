@@ -76,7 +76,7 @@ import { BatchImportStudentsModal } from './BatchImportStudentsModal';
 import { RosterManagementModal } from './RosterManagementModal';
 import { ClassroomMatrixView } from './ClassroomMatrixView';
 import { HighlightText, getStudentMatchReasons } from './HighlightText';
-import { CertificateThumbnail } from './ManualReviewQueue';
+import { CertificateThumbnail } from './CertificateThumbnail';
 
 interface StudentTableProps {
   students: StudentStatusRecord[];
