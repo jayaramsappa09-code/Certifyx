@@ -141,17 +141,36 @@ fun StudentsScreen(state: UiState, viewModel: MainViewModel) {
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Certifyx WhatsApp Reminder", reminderMessage)
-                        clipboard.setPrimaryClip(clip)
-                        showReminderDialog = false
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button(
+                        onClick = {
+                            viewModel.broadcastNotificationToDefaulters(
+                                title = "Urgent: Upload Your Pending Certificate",
+                                message = "Dear Student, your certificate upload for this semester is pending. Please upload your PDF certificate through Certifyx immediately for NAAC compliance."
+                            )
+                            showReminderDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Send to Students' In-App Inbox ($defaulterCount)")
                     }
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Copy to Clipboard")
+
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("Certifyx WhatsApp Reminder", reminderMessage)
+                            clipboard.setPrimaryClip(clip)
+                            showReminderDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Copy Text for WhatsApp")
+                    }
                 }
             },
             dismissButton = {

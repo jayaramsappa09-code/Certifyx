@@ -59,7 +59,16 @@ fun DashboardScreen(state: UiState, viewModel: MainViewModel) {
                         ) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Student Upload")
+                            Text("Upload")
+                        }
+                        Button(
+                            onClick = { viewModel.setTab(AppTab.BROADCAST_ALERTS) },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Campaign, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Broadcast")
                         }
                         Button(
                             onClick = { viewModel.runSync() },
@@ -67,15 +76,7 @@ fun DashboardScreen(state: UiState, viewModel: MainViewModel) {
                         ) {
                             Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Run Sync")
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.setTab(AppTab.STUDENTS) },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Roster")
+                            Text("Sync")
                         }
                     }
                 }

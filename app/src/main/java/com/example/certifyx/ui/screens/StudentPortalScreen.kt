@@ -3,8 +3,10 @@ package com.example.certifyx.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -13,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.certifyx.model.StudentNotification
 import com.example.certifyx.viewmodel.MainViewModel
 import com.example.certifyx.viewmodel.UiState
 
@@ -44,6 +47,11 @@ fun StudentPortalScreen(state: UiState, viewModel: MainViewModel) {
     var isUploading by remember { mutableStateOf(false) }
     var uploadSuccessDialog by remember { mutableStateOf(false) }
     var lastUploadedFileName by remember { mutableStateOf("") }
+    var showInboxDialog by remember { mutableStateOf(false) }
+
+    val studentNotifications = viewModel.getNotificationsForStudent(selectedRollNo)
+    val unreadCount = studentNotifications.count { !it.isRead }
+    val currentStudentRecord = state.students.find { it.rollNo.equals(selectedRollNo, ignoreCase = true) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -147,6 +155,73 @@ fun StudentPortalScreen(state: UiState, viewModel: MainViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }
                     )
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("In-App Notification Center", style = MaterialTheme.typography.titleSmall)
+                        }
+                        if (unreadCount > 0) {
+                            Badge(containerColor = MaterialTheme.colorScheme.error) {
+                                Text("$unreadCount NEW", modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                    Text(
+                        text = if (studentNotifications.isNotEmpty()) "Latest: ${studentNotifications.first().title}" else "No messages from faculty yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(
+                        onClick = { showInboxDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Mail, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Open My Messages (${studentNotifications.size})")
+                    }
+
+                    // Approval Status Banner for this student
+                    currentStudentRecord?.let { s ->
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Accreditation Approval Status:", style = MaterialTheme.typography.labelMedium)
+                            Badge(
+                                containerColor = when (s.approvalStatus) {
+                                    "APPROVED" -> MaterialTheme.colorScheme.tertiaryContainer
+                                    "REJECTED" -> MaterialTheme.colorScheme.errorContainer
+                                    else -> MaterialTheme.colorScheme.surface
+                                }
+                            ) {
+                                Text(s.approvalStatus, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        if (s.feedbackReason != null) {
+                            Text(
+                                text = "Faculty Feedback: ${s.feedbackReason}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -403,6 +478,86 @@ fun StudentPortalScreen(state: UiState, viewModel: MainViewModel) {
             confirmButton = {
                 Button(onClick = { uploadSuccessDialog = false }) {
                     Text("Done")
+                }
+            }
+        )
+    }
+
+    if (showInboxDialog) {
+        AlertDialog(
+            onDismissRequest = { showInboxDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("In-App Messages ($selectedRollNo)")
+                }
+            },
+            text = {
+                if (studentNotifications.isEmpty()) {
+                    Text("You have no messages or alerts from faculty at this time.", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 350.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(studentNotifications) { notif ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.markNotificationAsRead(notif.id) },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (notif.isRead) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = notif.title,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = if (notif.isRead) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        if (!notif.isRead) {
+                                            Badge(containerColor = MaterialTheme.colorScheme.error) {
+                                                Text("NEW", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = notif.message,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (notif.isRead) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "From: ${notif.sender}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                        Text(
+                                            text = notif.timestamp,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showInboxDialog = false }) {
+                    Text("Close")
                 }
             }
         )

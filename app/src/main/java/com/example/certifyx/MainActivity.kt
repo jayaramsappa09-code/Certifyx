@@ -119,16 +119,16 @@ class MainActivity : ComponentActivity() {
                                     label = { Text("Roster") }
                                 )
                                 NavigationBarItem(
+                                    selected = state.currentTab == AppTab.BROADCAST_ALERTS,
+                                    onClick = { viewModel.setTab(AppTab.BROADCAST_ALERTS) },
+                                    icon = { Icon(Icons.Default.Campaign, contentDescription = "Broadcast Alerts") },
+                                    label = { Text("Alerts") }
+                                )
+                                NavigationBarItem(
                                     selected = state.currentTab == AppTab.GOOGLE_INTEGRATION,
                                     onClick = { viewModel.setTab(AppTab.GOOGLE_INTEGRATION) },
                                     icon = { Icon(Icons.Default.Cloud, contentDescription = "Google Sync") },
                                     label = { Text("Sync") }
-                                )
-                                NavigationBarItem(
-                                    selected = state.currentTab == AppTab.RECONCILIATION,
-                                    onClick = { viewModel.setTab(AppTab.RECONCILIATION) },
-                                    icon = { Icon(Icons.Default.Assessment, contentDescription = "Reconciliation") },
-                                    label = { Text("Gaps") }
                                 )
                                 NavigationBarItem(
                                     selected = state.currentTab == AppTab.SETTINGS,
@@ -166,6 +166,7 @@ class MainActivity : ComponentActivity() {
                         when (state.currentTab) {
                             AppTab.DASHBOARD -> DashboardScreen(state, viewModel)
                             AppTab.STUDENTS -> StudentsScreen(state, viewModel)
+                            AppTab.BROADCAST_ALERTS -> BroadcastAlertsScreen(state, viewModel)
                             AppTab.STUDENT_PORTAL -> StudentPortalScreen(state, viewModel)
                             AppTab.GOOGLE_INTEGRATION -> GoogleIntegrationScreen(state, viewModel)
                             AppTab.RECONCILIATION -> ReconciliationScreen(state, viewModel)

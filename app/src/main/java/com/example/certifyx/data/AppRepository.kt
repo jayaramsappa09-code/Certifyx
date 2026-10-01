@@ -229,10 +229,129 @@ class AppRepository {
         )
     }
 
+    private val notificationsList = mutableListOf(
+        StudentNotification(
+            id = "notif_welcome",
+            recipientRollNo = "ALL",
+            title = "Welcome to Certifyx Portal",
+            message = "Please upload all your academic, hackathon, and course completion certificates for the current semester to ensure your NAAC criteria compliance.",
+            timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
+            sender = "Head of Department (CSE)",
+            type = "NOTICE"
+        ),
+        StudentNotification(
+            id = "notif_seed_1",
+            recipientRollNo = "25A31A05GB",
+            title = "Hackathon Certificate Approved",
+            message = "Your Smart India Hackathon participation certificate has been verified by the Department Coordinator.",
+            timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
+            sender = "Faculty Coordinator",
+            type = "APPROVAL"
+        )
+    )
+
+    fun getNotificationsForStudent(rollNo: String): List<StudentNotification> {
+        val cleanRoll = rollNo.trim().uppercase()
+        return notificationsList.filter { 
+            it.recipientRollNo.equals("ALL", ignoreCase = true) || 
+            it.recipientRollNo.equals(cleanRoll, ignoreCase = true) 
+        }.sortedByDescending { it.timestamp }
+    }
+
+    fun getAllNotifications(): List<StudentNotification> = notificationsList
+
+    fun sendNotification(
+        recipientRollNo: String,
+        title: String,
+        message: String,
+        type: String = "NOTICE",
+        sender: String = "Faculty Coordinator"
+    ): StudentNotification {
+        val notif = StudentNotification(
+            id = "notif_${System.currentTimeMillis()}",
+            recipientRollNo = recipientRollNo.trim().uppercase(),
+            title = title,
+            message = message,
+            timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
+            sender = sender,
+            type = type,
+            isRead = false
+        )
+        notificationsList.add(0, notif)
+        logAction("SEND_NOTIFICATION", "Dispatched in-app notification to $recipientRollNo: $title", "NOTIFICATION")
+        return notif
+    }
+
+    fun broadcastNotificationToDefaulters(title: String, message: String): Int {
+        val defaulters = getDefaulters()
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+        defaulters.forEach { s ->
+            notificationsList.add(
+                0,
+                StudentNotification(
+                    id = "notif_${System.currentTimeMillis()}_${s.rollNo}",
+                    recipientRollNo = s.rollNo,
+                    title = title,
+                    message = message,
+                    timestamp = timestamp,
+                    sender = "Department Academic Coordinator",
+                    type = "DEADLINE",
+                    isRead = false
+                )
+            )
+        }
+        logAction("BROADCAST_NOTIFICATION", "Dispatched urgent reminder to ${defaulters.size} defaulters.", "NOTIFICATION")
+        return defaulters.size
+    }
+
+    fun broadcastAlertToGroup(
+        targetGroup: String,
+        title: String,
+        message: String,
+        priority: String = "NOTICE",
+        sender: String = "Faculty Coordinator"
+    ): Int {
+        val targets = when (targetGroup) {
+            "NOT_STARTED" -> studentsList.filter { it.overallStatus == "NOT STARTED" }
+            "PENDING" -> studentsList.filter { it.overallStatus == "PENDING" }
+            "REJECTED" -> studentsList.filter { it.approvalStatus == "REJECTED" }
+            "APPROVED" -> studentsList.filter { it.approvalStatus == "APPROVED" }
+            else -> studentsList
+        }
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+        targets.forEach { student ->
+            notificationsList.add(
+                0,
+                StudentNotification(
+                    id = "alert_${System.currentTimeMillis()}_${student.rollNo}",
+                    recipientRollNo = student.rollNo,
+                    title = title,
+                    message = message,
+                    timestamp = timestamp,
+                    sender = sender,
+                    type = priority,
+                    isRead = false
+                )
+            )
+        }
+        logAction("BROADCAST_ALERT", "Dispatched '$priority' alert to group '$targetGroup' (${targets.size} students): $title", "ADMIN_BROADCAST")
+        return targets.size
+    }
+
+    fun markNotificationAsRead(notificationId: String) {
+        notificationsList.find { it.id == notificationId }?.isRead = true
+    }
+
     fun approveStudent(rollNo: String) {
         val s = studentsList.find { it.rollNo.equals(rollNo, ignoreCase = true) } ?: return
         s.approvalStatus = "APPROVED"
         s.feedbackReason = null
+        sendNotification(
+            recipientRollNo = s.rollNo,
+            title = "Certificate Approved",
+            message = "Congratulations! Your certificate submission has been verified and registered into official accreditation records.",
+            type = "APPROVAL"
+        )
         logAction("APPROVE_CERTIFICATE", "Approved certificate submission for ${s.name} (${s.rollNo})", "FACULTY_REVIEW")
     }
 
@@ -240,6 +359,12 @@ class AppRepository {
         val s = studentsList.find { it.rollNo.equals(rollNo, ignoreCase = true) } ?: return
         s.approvalStatus = "REJECTED"
         s.feedbackReason = reason
+        sendNotification(
+            recipientRollNo = s.rollNo,
+            title = "Action Required: Re-upload Certificate",
+            message = "Your certificate could not be accepted. Reason: $reason. Please re-upload a clear copy as soon as possible.",
+            type = "REJECTION"
+        )
         logAction("REJECT_CERTIFICATE", "Requested re-upload for ${s.name} (${s.rollNo}): $reason", "FACULTY_REVIEW")
     }
 

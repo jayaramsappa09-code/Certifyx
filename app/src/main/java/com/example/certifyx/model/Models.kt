@@ -110,6 +110,17 @@ data class AuditLogEntry(
     val category: String
 )
 
+data class StudentNotification(
+    val id: String,
+    val recipientRollNo: String,
+    val title: String,
+    val message: String,
+    val timestamp: String,
+    val sender: String = "Faculty Coordinator",
+    val type: String = "NOTICE", // NOTICE, APPROVAL, REJECTION, DEADLINE
+    var isRead: Boolean = false
+)
+
 data class AppSettings(
     val autoSyncIntervalMinutes: Int = 15,
     val enableSpreadsheetWrite: Boolean = true,

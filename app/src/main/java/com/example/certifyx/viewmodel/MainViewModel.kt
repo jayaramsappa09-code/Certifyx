@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 enum class AppTab {
-    DASHBOARD, STUDENTS, STUDENT_PORTAL, GOOGLE_INTEGRATION, RECONCILIATION, MANUAL_REVIEW, EXPORT, AUDIT_LOGS, SETTINGS
+    DASHBOARD, STUDENTS, BROADCAST_ALERTS, STUDENT_PORTAL, GOOGLE_INTEGRATION, RECONCILIATION, MANUAL_REVIEW, EXPORT, AUDIT_LOGS, SETTINGS
 }
 
 data class UiState(
@@ -24,6 +24,7 @@ data class UiState(
     val selectedStudent: StudentStatusRecord? = null,
     val isSyncing: Boolean = false,
     val lastSyncReport: SyncReport? = null,
+    val notifications: List<StudentNotification> = emptyList(),
     val snackbarMessage: String? = null
 )
 
@@ -37,6 +38,7 @@ class MainViewModel : ViewModel() {
             syncReports = repository.getSyncReports(),
             appSettings = repository.getAppSettings(),
             reconciliationAnalysis = repository.getReconciliationAnalysis(),
+            notifications = repository.getAllNotifications(),
             lastSyncReport = repository.getSyncReports().firstOrNull()
         )
     )
@@ -107,6 +109,24 @@ class MainViewModel : ViewModel() {
     val notStartedCount: Int
         get() = _uiState.value.students.count { it.overallStatus == "NOT STARTED" }
 
+    val rejectedCount: Int
+        get() = _uiState.value.students.count { it.approvalStatus == "REJECTED" }
+
+    val approvedCount: Int
+        get() = _uiState.value.students.count { it.approvalStatus == "APPROVED" }
+
+    fun broadcastAlertToGroup(
+        targetGroup: String,
+        title: String,
+        message: String,
+        priority: String,
+        sender: String = "Faculty Coordinator"
+    ): Int {
+        val count = repository.broadcastAlertToGroup(targetGroup, title, message, priority, sender)
+        refreshData("Broadcast alert successfully sent to $count students' apps!")
+        return count
+    }
+
     fun approveStudent(rollNo: String) {
         repository.approveStudent(rollNo)
         refreshData("Certificate approved for $rollNo")
@@ -158,6 +178,32 @@ $rollPreview$more
         return newStudents.size
     }
 
+    fun sendNotificationToStudent(
+        rollNo: String,
+        title: String,
+        message: String,
+        type: String = "NOTICE",
+        sender: String = "Faculty Coordinator"
+    ) {
+        repository.sendNotification(rollNo, title, message, type, sender)
+        refreshData("Notification sent to $rollNo")
+    }
+
+    fun broadcastNotificationToDefaulters(title: String, message: String): Int {
+        val count = repository.broadcastNotificationToDefaulters(title, message)
+        refreshData("Urgent reminder sent to $count pending students' apps!")
+        return count
+    }
+
+    fun getNotificationsForStudent(rollNo: String): List<StudentNotification> {
+        return repository.getNotificationsForStudent(rollNo)
+    }
+
+    fun markNotificationAsRead(id: String) {
+        repository.markNotificationAsRead(id)
+        refreshData("")
+    }
+
     fun clearSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null) }
     }
@@ -170,7 +216,8 @@ $rollPreview$more
                 syncReports = repository.getSyncReports(),
                 appSettings = repository.getAppSettings(),
                 reconciliationAnalysis = repository.getReconciliationAnalysis(),
-                snackbarMessage = message
+                notifications = repository.getAllNotifications(),
+                snackbarMessage = if (message.isNotBlank()) message else it.snackbarMessage
             )
         }
     }

@@ -17,6 +17,10 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
     var showRejectFeedbackDialog by remember { mutableStateOf(false) }
     var rejectionReason by remember { mutableStateOf("Blurry document / Ineligible date") }
 
+    var showSendNotificationDialog by remember { mutableStateOf(false) }
+    var notifTitle by remember { mutableStateOf("Action Required: Certificate Update") }
+    var notifMessage by remember { mutableStateOf("Please check your submitted certificate or re-upload before 5:00 PM.") }
+
     AlertDialog(
         onDismissRequest = { viewModel.selectStudent(null) },
         title = {
@@ -38,7 +42,7 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 450.dp),
+                    .heightIn(max = 480.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
@@ -119,6 +123,17 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
                             Text("Reject...")
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { showSendNotificationDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Send In-App Notification to Student")
+                    }
                 }
 
                 item {
@@ -167,6 +182,59 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
             }
         }
     )
+
+    if (showSendNotificationDialog) {
+        AlertDialog(
+            onDismissRequest = { showSendNotificationDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Notify ${student.name}")
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("This message will appear in the student's personal In-App Notification Inbox:", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = notifTitle,
+                        onValueChange = { notifTitle = it },
+                        label = { Text("Notification Title") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = notifMessage,
+                        onValueChange = { notifMessage = it },
+                        label = { Text("Message Content") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.sendNotificationToStudent(
+                            rollNo = student.rollNo,
+                            title = notifTitle,
+                            message = notifMessage,
+                            type = "NOTICE",
+                            sender = "Faculty Coordinator"
+                        )
+                        showSendNotificationDialog = false
+                    }
+                ) {
+                    Text("Send Notification")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSendNotificationDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     if (showRejectFeedbackDialog) {
         AlertDialog(
