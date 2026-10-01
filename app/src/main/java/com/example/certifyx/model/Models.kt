@@ -46,11 +46,14 @@ data class StudentStatusRecord(
     val name: String,
     val email: String? = null,
     val phone: String? = null,
+    val section: String = "CSE-C (2025-26)",
     val certificates: List<String> = emptyList(),
     var driveUploaded: Boolean = false,
     var sheetUpdated: Boolean = false,
     var submitted: Boolean = false,
     var overallStatus: String = "NOT STARTED", // COMPLETED, PENDING, NOT STARTED
+    var approvalStatus: String = "PENDING_REVIEW", // APPROVED, REJECTED, PENDING_REVIEW
+    var feedbackReason: String? = null,
     var countMismatch: CountMismatchInfo? = null,
     val driveFiles: MutableList<DriveCertificateFile> = mutableListOf(),
     val sheetRecords: MutableList<SheetRowRecord> = mutableListOf(),
@@ -116,5 +119,6 @@ data class AppSettings(
     val driveFolderName: String = "Class Certificates 2026",
     val spreadsheetId: String = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
     val spreadsheetName: String = "Student Certificate Submissions (Responses)",
-    val sheetName: String = "Form Responses 1"
+    val sheetName: String = "Form Responses 1",
+    val appsScriptWebhookUrl: String = "https://script.google.com/macros/s/AKfycbz_CertifyxWebhook/exec"
 )

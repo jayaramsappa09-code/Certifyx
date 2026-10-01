@@ -107,6 +107,57 @@ class MainViewModel : ViewModel() {
     val notStartedCount: Int
         get() = _uiState.value.students.count { it.overallStatus == "NOT STARTED" }
 
+    fun approveStudent(rollNo: String) {
+        repository.approveStudent(rollNo)
+        refreshData("Certificate approved for $rollNo")
+    }
+
+    fun rejectStudent(rollNo: String, reason: String) {
+        repository.rejectStudent(rollNo, reason)
+        refreshData("Re-upload requested for $rollNo: $reason")
+    }
+
+    fun getDefaulters(): List<StudentStatusRecord> {
+        return repository.getDefaulters()
+    }
+
+    fun generateWhatsAppReminderMessage(): String {
+        val defaulters = getDefaulters()
+        val count = defaulters.size
+        val rollPreview = defaulters.take(10).joinToString(", ") { it.rollNo }
+        val more = if (count > 10) " and ${count - 10} others" else ""
+        return """
+📢 *URGENT CERTIFICATE SUBMISSION REMINDER* 📢
+Dear Students,
+Please upload your Hackathon/Course/Activity certificates on *Certifyx* for NAAC & Accreditation records immediately.
+
+*Pending Roll Numbers ($count students)*:
+$rollPreview$more
+
+👉 Please submit your PDF certificate directly via Certifyx Portal. Ensure your Roll Number matches.
+""".trimIndent()
+    }
+
+    fun importRosterCsv(csvText: String, sectionName: String): Int {
+        val lines = csvText.lines().map { it.trim() }.filter { it.isNotBlank() }
+        val newStudents = mutableListOf<Student>()
+        lines.forEach { line ->
+            val parts = line.split(",", "\t", ";").map { it.trim() }
+            if (parts.size >= 2) {
+                val roll = parts[0]
+                val name = parts[1]
+                if (roll.isNotBlank() && name.isNotBlank() && !roll.equals("RollNo", ignoreCase = true)) {
+                    newStudents.add(Student(rollNo = roll, name = name))
+                }
+            }
+        }
+        if (newStudents.isNotEmpty()) {
+            repository.importRoster(newStudents, sectionName)
+            refreshData("Successfully imported ${newStudents.size} students into $sectionName!")
+        }
+        return newStudents.size
+    }
+
     fun clearSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null) }
     }

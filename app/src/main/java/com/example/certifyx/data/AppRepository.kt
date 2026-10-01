@@ -229,6 +229,41 @@ class AppRepository {
         )
     }
 
+    fun approveStudent(rollNo: String) {
+        val s = studentsList.find { it.rollNo.equals(rollNo, ignoreCase = true) } ?: return
+        s.approvalStatus = "APPROVED"
+        s.feedbackReason = null
+        logAction("APPROVE_CERTIFICATE", "Approved certificate submission for ${s.name} (${s.rollNo})", "FACULTY_REVIEW")
+    }
+
+    fun rejectStudent(rollNo: String, reason: String) {
+        val s = studentsList.find { it.rollNo.equals(rollNo, ignoreCase = true) } ?: return
+        s.approvalStatus = "REJECTED"
+        s.feedbackReason = reason
+        logAction("REJECT_CERTIFICATE", "Requested re-upload for ${s.name} (${s.rollNo}): $reason", "FACULTY_REVIEW")
+    }
+
+    fun getDefaulters(): List<StudentStatusRecord> {
+        return studentsList.filter { it.overallStatus != "COMPLETED" || it.approvalStatus == "REJECTED" }
+    }
+
+    fun importRoster(newStudents: List<Student>, sectionName: String) {
+        newStudents.forEach { student ->
+            if (studentsList.none { it.rollNo.equals(student.rollNo, ignoreCase = true) }) {
+                studentsList.add(
+                    StudentStatusRecord(
+                        rollNo = student.rollNo,
+                        name = student.name,
+                        section = sectionName,
+                        overallStatus = "NOT STARTED",
+                        approvalStatus = "PENDING_REVIEW"
+                    )
+                )
+            }
+        }
+        logAction("IMPORT_ROSTER", "Imported ${newStudents.size} students into section '$sectionName'.", "ADMIN")
+    }
+
     fun getReconciliationAnalysis(): ReconciliationAnalysis {
         val missingInSheet = studentsList.filter { it.driveFiles.isNotEmpty() && it.sheetRecords.isEmpty() }.map {
             mapOf("rollNo" to it.rollNo, "name" to it.name, "fileCount" to it.driveFiles.size)

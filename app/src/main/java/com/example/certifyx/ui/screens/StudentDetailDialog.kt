@@ -3,9 +3,9 @@ package com.example.certifyx.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -14,6 +14,9 @@ import com.example.certifyx.viewmodel.MainViewModel
 
 @Composable
 fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) {
+    var showRejectFeedbackDialog by remember { mutableStateOf(false) }
+    var rejectionReason by remember { mutableStateOf("Blurry document / Ineligible date") }
+
     AlertDialog(
         onDismissRequest = { viewModel.selectStudent(null) },
         title = {
@@ -22,7 +25,10 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = student.name, style = MaterialTheme.typography.titleMedium)
+                Column {
+                    Text(text = student.name, style = MaterialTheme.typography.titleMedium)
+                    Text(text = student.rollNo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
                 IconButton(onClick = { viewModel.selectStudent(null) }) {
                     Icon(Icons.Default.Close, contentDescription = "Close")
                 }
@@ -32,12 +38,45 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 400.dp),
+                    .heightIn(max = 450.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
-                    Text(text = "Roll Number: ${student.rollNo}", style = MaterialTheme.typography.bodyMedium)
-                    Text(text = "Overall Status: ${student.overallStatus}", style = MaterialTheme.typography.bodyMedium)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Faculty Approval Status:", style = MaterialTheme.typography.labelMedium)
+                                Badge(
+                                    containerColor = when (student.approvalStatus) {
+                                        "APPROVED" -> MaterialTheme.colorScheme.tertiaryContainer
+                                        "REJECTED" -> MaterialTheme.colorScheme.errorContainer
+                                        else -> MaterialTheme.colorScheme.surface
+                                    }
+                                ) {
+                                    Text(
+                                        text = student.approvalStatus,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
+                            if (student.feedbackReason != null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Rejection Reason: ${student.feedbackReason}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
                 }
 
                 item {
@@ -52,8 +91,39 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
                 }
 
                 item {
+                    Text(text = "Faculty Review Actions", style = MaterialTheme.typography.titleSmall)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                viewModel.approveStudent(student.rollNo)
+                                viewModel.selectStudent(null)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Approve")
+                        }
+                        OutlinedButton(
+                            onClick = { showRejectFeedbackDialog = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Reject...")
+                        }
+                    }
+                }
+
+                item {
                     HorizontalDivider()
-                    Text(text = "Verification Toggles", style = MaterialTheme.typography.titleSmall)
+                    Text(text = "Manual Verification Toggles", style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -97,4 +167,39 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
             }
         }
     )
+
+    if (showRejectFeedbackDialog) {
+        AlertDialog(
+            onDismissRequest = { showRejectFeedbackDialog = false },
+            title = { Text("Request Re-upload with Feedback") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select or enter the reason for rejection so the student can re-upload correctly:", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = rejectionReason,
+                        onValueChange = { rejectionReason = it },
+                        label = { Text("Reason for Rejection") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.rejectStudent(student.rollNo, rejectionReason)
+                        showRejectFeedbackDialog = false
+                        viewModel.selectStudent(null)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Send Rejection")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRejectFeedbackDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
