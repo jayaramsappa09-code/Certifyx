@@ -26,7 +26,7 @@ fun AuditLogsScreen(state: UiState, viewModel: MainViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(imageVector = Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Audit Logs & Sync History", style = MaterialTheme.colorScheme.titleLarge)
+                Text(text = "Audit Logs & Sync History", style = MaterialTheme.typography.titleLarge)
             }
         }
 
@@ -47,13 +47,13 @@ fun AuditLogCard(log: AuditLogEntry) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = log.action, style = MaterialTheme.colorScheme.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Text(text = log.timestamp, style = MaterialTheme.colorScheme.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = log.action, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text(text = log.timestamp, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = log.details, style = MaterialTheme.colorScheme.bodyMedium)
+            Text(text = log.details, style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = "User: ${log.user} | Category: ${log.category}", style = MaterialTheme.colorScheme.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = "User: ${log.user} | Category: ${log.category}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

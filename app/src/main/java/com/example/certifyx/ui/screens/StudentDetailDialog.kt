@@ -22,7 +22,7 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = student.name, style = MaterialTheme.colorScheme.titleMedium)
+                Text(text = student.name, style = MaterialTheme.typography.titleMedium)
                 IconButton(onClick = { viewModel.selectStudent(null) }) {
                     Icon(Icons.Default.Close, contentDescription = "Close")
                 }
@@ -36,24 +36,24 @@ fun StudentDetailDialog(student: StudentStatusRecord, viewModel: MainViewModel) 
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
-                    Text(text = "Roll Number: ${student.rollNo}", style = MaterialTheme.colorScheme.bodyMedium)
-                    Text(text = "Overall Status: ${student.overallStatus}", style = MaterialTheme.colorScheme.bodyMedium)
+                    Text(text = "Roll Number: ${student.rollNo}", style = MaterialTheme.typography.bodyMedium)
+                    Text(text = "Overall Status: ${student.overallStatus}", style = MaterialTheme.typography.bodyMedium)
                 }
 
                 item {
-                    Text(text = "Certificates (${student.certificates.size}):", style = MaterialTheme.colorScheme.titleSmall)
+                    Text(text = "Certificates (${student.certificates.size}):", style = MaterialTheme.typography.titleSmall)
                     if (student.certificates.isEmpty()) {
-                        Text(text = "No certificates uploaded or recorded yet.", style = MaterialTheme.colorScheme.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(text = "No certificates uploaded or recorded yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         student.certificates.forEach { cert ->
-                            Text(text = "• $cert", style = MaterialTheme.colorScheme.bodySmall)
+                            Text(text = "• $cert", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
 
                 item {
-                    Divider()
-                    Text(text = "Verification Toggles", style = MaterialTheme.colorScheme.titleSmall)
+                    HorizontalDivider()
+                    Text(text = "Verification Toggles", style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),

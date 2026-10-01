@@ -30,10 +30,10 @@ fun GoogleIntegrationScreen(state: UiState, viewModel: MainViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(imageVector = Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(text = "Google Drive & Sheets Integration", style = MaterialTheme.colorScheme.titleLarge)
+                        Text(text = "Google Drive & Sheets Integration", style = MaterialTheme.typography.titleLarge)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(text = "Configure linked Google Drive certificate folders and Google Sheets response spreadsheets for automated reconciliation.", style = MaterialTheme.colorScheme.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = "Configure linked Google Drive certificate folders and Google Sheets response spreadsheets for automated reconciliation.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -44,7 +44,7 @@ fun GoogleIntegrationScreen(state: UiState, viewModel: MainViewModel) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Google Drive Configuration", style = MaterialTheme.colorScheme.titleMedium)
+                    Text(text = "Google Drive Configuration", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = state.appSettings.driveFolderId,
@@ -71,7 +71,7 @@ fun GoogleIntegrationScreen(state: UiState, viewModel: MainViewModel) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Google Sheets Configuration", style = MaterialTheme.colorScheme.titleMedium)
+                    Text(text = "Google Sheets Configuration", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = state.appSettings.spreadsheetId,

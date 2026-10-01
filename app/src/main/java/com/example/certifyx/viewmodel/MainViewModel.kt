@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 enum class AppTab {
-    DASHBOARD, STUDENTS, GOOGLE_INTEGRATION, RECONCILIATION, MANUAL_REVIEW, EXPORT, AUDIT_LOGS, SETTINGS
+    DASHBOARD, STUDENTS, STUDENT_PORTAL, GOOGLE_INTEGRATION, RECONCILIATION, MANUAL_REVIEW, EXPORT, AUDIT_LOGS, SETTINGS
 }
 
 data class UiState(
@@ -61,6 +61,26 @@ class MainViewModel : ViewModel() {
     fun toggleStudentField(rollNo: String, field: String, value: Boolean) {
         repository.toggleStudentField(rollNo, field, value)
         refreshData("Updated status for $rollNo")
+    }
+
+    fun uploadStudentCertificate(
+        rollNo: String,
+        studentName: String,
+        certType: String,
+        certTitle: String,
+        fileName: String
+    ): Boolean {
+        val success = repository.uploadStudentCertificate(
+            rollNo = rollNo,
+            studentName = studentName,
+            certType = certType,
+            certTitle = certTitle,
+            fileName = fileName
+        )
+        if (success) {
+            refreshData("Successfully uploaded $fileName to Google Drive folder '${repository.getAppSettings().driveFolderName}' and updated Google Sheets!")
+        }
+        return success
     }
 
     fun runSync() {

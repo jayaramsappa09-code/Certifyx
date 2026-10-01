@@ -29,10 +29,10 @@ fun ExportScreen(state: UiState, viewModel: MainViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(imageVector = Icons.Default.FileDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(text = "Export Center", style = MaterialTheme.colorScheme.titleLarge)
+                        Text(text = "Export Center", style = MaterialTheme.typography.titleLarge)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(text = "Download reconciliation reports, class summary CSVs, individual certificate rosters, and audit logs.", style = MaterialTheme.colorScheme.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = "Download reconciliation reports, class summary CSVs, individual certificate rosters, and audit logs.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

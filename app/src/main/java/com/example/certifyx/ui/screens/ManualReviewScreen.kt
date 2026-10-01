@@ -29,10 +29,10 @@ fun ManualReviewScreen(state: UiState, viewModel: MainViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(imageVector = Icons.Default.Rule, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(text = "Manual Review Queue", style = MaterialTheme.colorScheme.titleLarge)
+                        Text(text = "Manual Review Queue", style = MaterialTheme.typography.titleLarge)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(text = "Review unmatched files, outside class submissions, or roll number discrepancies.", style = MaterialTheme.colorScheme.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = "Review unmatched files, outside class submissions, or roll number discrepancies.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -42,9 +42,9 @@ fun ManualReviewScreen(state: UiState, viewModel: MainViewModel) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Queue Status", style = MaterialTheme.colorScheme.titleMedium)
+                    Text(text = "Queue Status", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "No items currently require manual review. All certificate uploads and Google Sheet responses successfully matched the 67 student roster.", style = MaterialTheme.colorScheme.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = "No items currently require manual review. All certificate uploads and Google Sheet responses successfully matched the 67 student roster.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

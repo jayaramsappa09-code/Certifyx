@@ -1,6 +1,5 @@
 package com.example.certifyx.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -40,11 +39,11 @@ fun DashboardScreen(state: UiState, viewModel: MainViewModel) {
                         Column {
                             Text(
                                 text = "Class Certificate Automation Manager",
-                                style = MaterialTheme.colorScheme.titleLarge
+                                style = MaterialTheme.typography.titleLarge
                             )
                             Text(
                                 text = "Automated compliance tracking between Google Drive & Sheets",
-                                style = MaterialTheme.colorScheme.bodyMedium,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -55,20 +54,28 @@ fun DashboardScreen(state: UiState, viewModel: MainViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
+                            onClick = { viewModel.setTab(AppTab.STUDENT_PORTAL) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Student Upload")
+                        }
+                        Button(
                             onClick = { viewModel.runSync() },
-                            modifier = Modifier.weight(1.5.dp)
+                            modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Run Sync Engine")
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Run Sync")
                         }
                         OutlinedButton(
                             onClick = { viewModel.setTab(AppTab.STUDENTS) },
-                            modifier = Modifier.weight(1.5.dp)
+                            modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("View Roster")
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Roster")
                         }
                     }
                 }
@@ -78,7 +85,7 @@ fun DashboardScreen(state: UiState, viewModel: MainViewModel) {
         item {
             Text(
                 text = "Key Metrics & Overview",
-                style = MaterialTheme.colorScheme.titleMedium,
+                style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(vertical = 4.dp)
             )
         }
@@ -137,17 +144,17 @@ fun DashboardScreen(state: UiState, viewModel: MainViewModel) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Latest Sync Summary", style = MaterialTheme.colorScheme.titleMedium)
+                    Text(text = "Latest Sync Summary", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     val report = state.lastSyncReport
                     if (report != null) {
-                        Text(text = "Timestamp: ${report.timestamp}", style = MaterialTheme.colorScheme.bodySmall)
-                        Text(text = "Students Checked: ${report.studentsChecked}", style = MaterialTheme.colorScheme.bodySmall)
-                        Text(text = "Drive Files Scanned: ${report.driveFilesScanned}", style = MaterialTheme.colorScheme.bodySmall)
-                        Text(text = "Spreadsheet Records Checked: ${report.spreadsheetRecordsChecked}", style = MaterialTheme.colorScheme.bodySmall)
-                        Text(text = "Duration: ${report.durationMs}ms", style = MaterialTheme.colorScheme.bodySmall)
+                        Text(text = "Timestamp: ${report.timestamp}", style = MaterialTheme.typography.bodySmall)
+                        Text(text = "Students Checked: ${report.studentsChecked}", style = MaterialTheme.typography.bodySmall)
+                        Text(text = "Drive Files Scanned: ${report.driveFilesScanned}", style = MaterialTheme.typography.bodySmall)
+                        Text(text = "Spreadsheet Records Checked: ${report.spreadsheetRecordsChecked}", style = MaterialTheme.typography.bodySmall)
+                        Text(text = "Duration: ${report.durationMs}ms", style = MaterialTheme.typography.bodySmall)
                     } else {
-                        Text(text = "No sync executed yet.", style = MaterialTheme.colorScheme.bodySmall)
+                        Text(text = "No sync executed yet.", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -174,12 +181,12 @@ fun MetricCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = title, style = MaterialTheme.colorScheme.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Icon(imageVector = icon, contentDescription = null, tint = color)
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = value, style = MaterialTheme.colorScheme.headlineMedium)
-            Text(text = subtitle, style = MaterialTheme.colorScheme.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = value, style = MaterialTheme.typography.headlineMedium)
+            Text(text = subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

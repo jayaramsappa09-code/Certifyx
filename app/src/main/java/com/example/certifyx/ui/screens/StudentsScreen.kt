@@ -89,8 +89,8 @@ fun StudentCard(student: StudentStatusRecord, onClick: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(text = student.name, style = MaterialTheme.colorScheme.titleMedium)
-                    Text(text = "Roll No: ${student.rollNo}", style = MaterialTheme.colorScheme.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = student.name, style = MaterialTheme.typography.titleMedium)
+                    Text(text = "Roll No: ${student.rollNo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Badge(
                     containerColor = when (student.overallStatus) {
@@ -102,7 +102,7 @@ fun StudentCard(student: StudentStatusRecord, onClick: () -> Unit) {
                     Text(
                         text = student.overallStatus,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.colorScheme.labelSmall
+                        style = MaterialTheme.typography.labelSmall
                     )
                 }
             }
@@ -111,9 +111,9 @@ fun StudentCard(student: StudentStatusRecord, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = "Drive Files: ${student.driveFiles.size}", style = MaterialTheme.colorScheme.bodySmall)
-                Text(text = "Sheet Responses: ${student.sheetRecords.size}", style = MaterialTheme.colorScheme.bodySmall)
-                Text(text = "Submitted: ${if (student.submitted) "Yes" else "No"}", style = MaterialTheme.colorScheme.bodySmall)
+                Text(text = "Drive Files: ${student.driveFiles.size}", style = MaterialTheme.typography.bodySmall)
+                Text(text = "Sheet Responses: ${student.sheetRecords.size}", style = MaterialTheme.typography.bodySmall)
+                Text(text = "Submitted: ${if (student.submitted) "Yes" else "No"}", style = MaterialTheme.typography.bodySmall)
             }
         }
     }

@@ -24,7 +24,7 @@ fun SettingsScreen(state: UiState, viewModel: MainViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(imageVector = Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Application Settings", style = MaterialTheme.colorScheme.titleLarge)
+                Text(text = "Application Settings", style = MaterialTheme.typography.titleLarge)
             }
         }
 
@@ -34,10 +34,10 @@ fun SettingsScreen(state: UiState, viewModel: MainViewModel) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Admin Emails", style = MaterialTheme.colorScheme.titleMedium)
+                    Text(text = "Admin Emails", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     state.appSettings.adminEmails.forEach { email ->
-                        Text(text = "• $email", style = MaterialTheme.colorScheme.bodyMedium)
+                        Text(text = "• $email", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -49,10 +49,10 @@ fun SettingsScreen(state: UiState, viewModel: MainViewModel) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Sync Configuration", style = MaterialTheme.colorScheme.titleMedium)
+                    Text(text = "Sync Configuration", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "Auto Sync Interval: ${state.appSettings.autoSyncIntervalMinutes} minutes", style = MaterialTheme.colorScheme.bodyMedium)
-                    Text(text = "Spreadsheet Write Enabled: ${state.appSettings.enableSpreadsheetWrite}", style = MaterialTheme.colorScheme.bodyMedium)
+                    Text(text = "Auto Sync Interval: ${state.appSettings.autoSyncIntervalMinutes} minutes", style = MaterialTheme.typography.bodyMedium)
+                    Text(text = "Spreadsheet Write Enabled: ${state.appSettings.enableSpreadsheetWrite}", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }

@@ -31,10 +31,10 @@ fun ReconciliationScreen(state: UiState, viewModel: MainViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(imageVector = Icons.Default.Assessment, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(text = "Reconciliation & Gap Analysis", style = MaterialTheme.colorScheme.titleLarge)
+                        Text(text = "Reconciliation & Gap Analysis", style = MaterialTheme.typography.titleLarge)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(text = "Automated cross-checking of Google Drive certificates against Google Sheet form responses and class roster.", style = MaterialTheme.colorScheme.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = "Automated cross-checking of Google Drive certificates against Google Sheet form responses and class roster.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -46,14 +46,14 @@ fun ReconciliationScreen(state: UiState, viewModel: MainViewModel) {
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = "Integrity Summary Score", style = MaterialTheme.colorScheme.titleMedium)
+                        Text(text = "Integrity Summary Score", style = MaterialTheme.typography.titleMedium)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "${analysis.summary.integrityScore}%", style = MaterialTheme.colorScheme.headlineLarge, color = MaterialTheme.colorScheme.primary)
+                        Text(text = "${analysis.summary.integrityScore}%", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "Matched Roster Students: ${analysis.summary.matchedRosterCount} / ${analysis.totalRosterStudents}", style = MaterialTheme.colorScheme.bodyMedium)
-                        Text(text = "Drive Files Missing in Sheet: ${analysis.summary.driveMissingSheetCount}", style = MaterialTheme.colorScheme.bodySmall)
-                        Text(text = "Sheet Records Missing in Drive: ${analysis.summary.sheetMissingDriveCount}", style = MaterialTheme.colorScheme.bodySmall)
-                        Text(text = "Quantity Mismatches: ${analysis.summary.quantityMismatchCount}", style = MaterialTheme.colorScheme.bodySmall)
+                        Text(text = "Matched Roster Students: ${analysis.summary.matchedRosterCount} / ${analysis.totalRosterStudents}", style = MaterialTheme.typography.bodyMedium)
+                        Text(text = "Drive Files Missing in Sheet: ${analysis.summary.driveMissingSheetCount}", style = MaterialTheme.typography.bodySmall)
+                        Text(text = "Sheet Records Missing in Drive: ${analysis.summary.sheetMissingDriveCount}", style = MaterialTheme.typography.bodySmall)
+                        Text(text = "Quantity Mismatches: ${analysis.summary.quantityMismatchCount}", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

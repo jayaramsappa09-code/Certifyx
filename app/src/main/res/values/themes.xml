@@ -1,5 +1,7 @@
 <resources>
-    <style name="Theme.Certifyx" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.Certifyx" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
         <item name="android:statusBarColor">@color/slate_950</item>
         <item name="android:navigationBarColor">@color/slate_950</item>
         <item name="android:windowBackground">@color/slate_950</item>

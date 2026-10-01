@@ -143,6 +143,52 @@ class AppRepository {
         logAction("UPDATE_STATUS", "Updated $field for student $rollNo to $value", "STATUS")
     }
 
+    fun uploadStudentCertificate(
+        rollNo: String,
+        studentName: String,
+        certType: String,
+        certTitle: String,
+        fileName: String
+    ): Boolean {
+        val student = studentsList.find { it.rollNo.equals(rollNo, ignoreCase = true) } ?: return false
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+        val cleanCertName = if (certTitle.isNotBlank()) "$certType - $certTitle" else certType
+
+        val driveFile = DriveCertificateFile(
+            id = "drive_${System.currentTimeMillis()}",
+            name = fileName,
+            mimeType = "application/pdf",
+            webViewLink = "https://drive.google.com/drive/folders/${appSettings.driveFolderId}",
+            detectedRollNo = student.rollNo,
+            detectedCertType = certType,
+            detectedStudentName = student.name
+        )
+
+        val sheetRecord = SheetRowRecord(
+            rowIndex = student.sheetRecords.size + 2,
+            rollNo = student.rollNo,
+            name = student.name,
+            certificateType = cleanCertName,
+            submissionTimestamp = timestamp,
+            matchStatus = "MATCHED"
+        )
+
+        student.driveFiles.add(0, driveFile)
+        student.sheetRecords.add(0, sheetRecord)
+        student.driveUploaded = true
+        student.sheetUpdated = true
+        student.submitted = true
+        student.overallStatus = "COMPLETED"
+        student.lastUpdated = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+
+        logAction(
+            "DIRECT_STUDENT_UPLOAD",
+            "Student ${student.rollNo} (${student.name}) uploaded $fileName ($cleanCertName) directly to Google Drive folder '${appSettings.driveFolderName}'. Auto-recorded in Google Sheets.",
+            "UPLOAD"
+        )
+        return true
+    }
+
     fun runSync(): SyncReport {
         val startTime = System.currentTimeMillis()
         val totalDrive = studentsList.sumOf { it.driveFiles.size }
